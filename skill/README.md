@@ -1,0 +1,40 @@
+# `bootstrap-ci` — the skill (a second way to do the same thing)
+
+This folder is a **Claude Code skill** that performs the same job as the
+`ci-bootstrap` service in the repo root, by a different mechanism.
+
+| | The service (`src/ci_bootstrap/`) | The skill (`bootstrap-ci/`) |
+|---|---|---|
+| What runs it | A Python program (FastAPI / CLI) | Claude Code, following `SKILL.md` |
+| Who classifies | An **Anthropic API call** (Haiku, structured output) | **Claude itself** reads the manifests and decides |
+| How the YAML is made | `cookbooks/*.py` render it in code | `references/cookbooks/*.md` templates Claude fills in |
+| How a PR opens | `httpx` against the GitHub REST API | the `gh` CLI |
+| Needs an API key | Yes (to classify) | No |
+
+Both share the **same contract**: clone → classify (language + build system) →
+render a fixed **four-phase** workflow (build → test → sonar → push) from a
+cookbook keyed on the build system → open a PR. Neither ever lets an LLM
+free-write the workflow, and both **error out** on a build system that has no
+cookbook.
+
+## Layout
+
+```
+bootstrap-ci/
+├── SKILL.md                     the procedure Claude follows
+└── references/
+    ├── skeleton.md              the fixed 4-phase contract + guards (one source of truth)
+    └── cookbooks/               one template per build system (maven, dotnet, pip, go)
+```
+
+## Using it
+
+Copy (or symlink) `bootstrap-ci/` into a skills directory Claude Code loads —
+`~/.claude/skills/` (personal) or `<project>/.claude/skills/` (project) — then
+just ask, e.g. *"add CI to https://github.com/owner/repo"*.
+
+## Extending it
+
+Add one file under `references/cookbooks/` for the new build system and add a row
+to the two tables in `SKILL.md` (step 3). Nothing else changes — see
+`references/skeleton.md` for the contract a cookbook must satisfy.
