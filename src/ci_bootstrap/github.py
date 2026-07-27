@@ -28,6 +28,44 @@ class PROpenError(Exception):
     """Raised when the branch cannot be pushed or the PR cannot be opened."""
 
 
+class SecretError(Exception):
+    """Raised when a repository Actions secret cannot be written."""
+
+
+def set_repo_secret(owner: str, name: str, secret_name: str, value: str, token: str) -> None:
+    """Store `value` as an Actions secret on owner/name.
+
+    GitHub requires the value encrypted for the repo's Actions public key with a
+    libsodium sealed box. Needs a token with admin (secrets:write) on the repo.
+    The secret value is never logged.
+    """
+    key = httpx.get(
+        f"{API}/repos/{owner}/{name}/actions/secrets/public-key",
+        headers=_headers(token), timeout=30,
+    )
+    if key.status_code >= 300:
+        raise SecretError(f"fetch public key failed: {key.status_code} {key.text[:200]}")
+    pub = key.json()
+    payload = {"encrypted_value": _seal(pub["key"], value), "key_id": pub["key_id"]}
+    put = httpx.put(
+        f"{API}/repos/{owner}/{name}/actions/secrets/{secret_name}",
+        headers=_headers(token), json=payload, timeout=30,
+    )
+    if put.status_code >= 300:
+        raise SecretError(f"set secret {secret_name} failed: {put.status_code} {put.text[:200]}")
+
+
+def _seal(public_key_b64: str, value: str) -> str:
+    """libsodium sealed box → base64, the exact format GitHub expects."""
+    import base64
+
+    from nacl import encoding, public
+
+    pk = public.PublicKey(public_key_b64.encode(), encoder=encoding.Base64Encoder)
+    sealed = public.SealedBox(pk).encrypt(value.encode())
+    return base64.b64encode(sealed).decode()
+
+
 def resolve_token() -> str | None:
     """Find a GitHub token: env first, then the gh CLI."""
     for var in ("GITHUB_TOKEN", "GH_TOKEN"):

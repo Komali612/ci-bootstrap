@@ -158,7 +158,10 @@ IMAGE_PLACEHOLDER = "__IMAGE__"
 
 
 def _fill_placeholders(text: str, snapshot: RepoSnapshot) -> str:
-    text = text.replace(SONAR_ORG_PLACEHOLDER, snapshot.owner.lower())
+    from ..config import sonar_org
+
+    org = sonar_org() or snapshot.owner.lower()  # service config wins; else owner
+    text = text.replace(SONAR_ORG_PLACEHOLDER, org)
     text = text.replace(SONAR_PROJECT_KEY_PLACEHOLDER, f"{snapshot.owner}_{snapshot.name}")
     text = text.replace(IMAGE_PLACEHOLDER, f"ghcr.io/{snapshot.owner.lower()}/{snapshot.name.lower()}")
     return text

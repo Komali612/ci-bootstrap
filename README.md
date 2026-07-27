@@ -31,6 +31,24 @@ the image push runs on merges to the default branch or a manual run (never on a
 plain pull request). These guards are
 structural, not selectable.
 
+## SonarCloud: configure once on the service, never per repo
+
+For an org where every repo shares one SonarCloud org, set two values **once** on
+the service (env or the gitignored `.env`) so developers do nothing per repo:
+
+    SONAR_ORG=my-sonar-org        # baked into every generated workflow (else the repo owner is used)
+    SONAR_TOKEN=<sonarcloud token> # the org's analysis token, held by the service
+
+- **`SONAR_ORG`** is inlined into each generated workflow (`config.sonar_org()`),
+  replacing the previous guess from the repo owner.
+- **`SONAR_TOKEN`**, when present, is written into **each bootstrapped repo's
+  Actions secrets** during `bootstrap` — the service fetches the repo's Actions
+  public key, seals the value with a libsodium box, and `PUT`s it. So the Sonar
+  step just works on the first run; nobody sets a secret by hand. Requires the
+  GitHub token to have admin (`secrets: write`) on the repo. If it's not set, the
+  bootstrap still succeeds and Sonar stays skipped (`sonar_secret_set` reports
+  the outcome). The token is only ever encrypted for GitHub — never logged.
+
 ## Adding support for a new language / build system
 
 Add one entry under `cookbooks:` in `src/ci_bootstrap/cookbooks/cookbooks.yaml`:

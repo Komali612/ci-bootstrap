@@ -130,6 +130,11 @@ function render(r){
   } else {
     h += '<div class="banner err">\\u274c ' + esc(r.message) + '</div>';
   }
+  if (r.sonar_secret_set === true) {
+    h += '<div class="banner ok">\\ud83d\\udd10 SONAR_TOKEN written to the repo\\u2019s Actions secrets</div>';
+  } else if (r.sonar_secret_set === false) {
+    h += '<div class="banner warn">\\u26a0\\ufe0f Could not set SONAR_TOKEN (token needs admin/secrets:write) \\u2014 Sonar will stay skipped</div>';
+  }
   const c = r.classification;
   if (c) {
     h += '<div class="card"><strong>Classification</strong><table>'

@@ -8,6 +8,8 @@ Set once in a gitignored `.env` at the repo root:
 
     ANTHROPIC_API_KEY=sk-ant-...
     GH_TOKEN=ghp_...
+    SONAR_ORG=my-sonar-org        # baked into every generated workflow
+    SONAR_TOKEN=<sonarcloud token> # injected into each bootstrapped repo's secrets
 """
 
 from __future__ import annotations
@@ -29,6 +31,24 @@ def load_dotenv() -> str | None:
             _apply(path)
             return str(path)
     return None
+
+
+def sonar_org() -> str | None:
+    """The SonarCloud organization key baked into every generated workflow.
+
+    Set once via SONAR_ORG. If unset, the generator falls back to the repo
+    owner (lowercased) -- the SonarCloud convention for GitHub-imported orgs.
+    """
+    return (os.environ.get("SONAR_ORG") or "").strip() or None
+
+
+def sonar_token() -> str | None:
+    """The SonarCloud analysis token, held by the service (not per repo).
+
+    Set once via SONAR_TOKEN. When present, the service writes it into each
+    bootstrapped repo's Actions secrets so developers never set it by hand.
+    """
+    return (os.environ.get("SONAR_TOKEN") or "").strip() or None
 
 
 def _apply(path: Path) -> None:

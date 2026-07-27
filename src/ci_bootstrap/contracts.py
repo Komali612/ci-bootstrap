@@ -94,4 +94,5 @@ class BootstrapResult(BaseModel):
     branch: str | None = None
     pr_number: int | None = None
     pr_url: str | None = None
+    sonar_secret_set: bool | None = None  # True/False if we tried to write SONAR_TOKEN; None if not configured
     message: str = ""
