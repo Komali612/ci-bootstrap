@@ -1,23 +1,24 @@
-"""The cookbook engine: one fixed 4-phase skeleton + a registry of cookbooks.
+"""The cookbook engine: one fixed 4-phase skeleton + a registry loaded from data.
 
 The four phases -- Build, Test, Sonar, Push -- are defined *here*, once, and are
-always emitted. A Cookbook does not get to add, remove, or reorder phases; it
-only supplies the language-specific fill-ins (how to set up the toolchain, the
-build/test commands, the Sonar scanner invocation, and a default Dockerfile).
+always emitted. A cookbook does not get to add, remove, or reorder phases; it
+only supplies the language-specific fill-ins (toolchain setup, the build/test
+commands, which Sonar strategy to use, and a default Dockerfile).
 
-Adding support for a new language/build system therefore means writing one
-small Cookbook and registering it -- nothing in this file changes. That is the
-whole extensibility story.
+Those fill-ins are not hard-coded per language anymore -- they are read from
+``cookbooks.yaml`` (the single source of truth, shared with the bootstrap-ci
+skill). Adding a language therefore means editing that data file; nothing in
+this module changes. That is the whole extensibility story.
 
 The guards on Sonar (skip unless SONAR_TOKEN is set) and Push (only on a push to
-the default branch) are structural: they are always present and are not
-user-selectable. They exist so the generated workflow doesn't spuriously fail
-before its secrets/registry are wired up.
+the default branch) are structural: always present, never user-selectable. They
+exist so the generated workflow doesn't spuriously fail before its
+secrets/registry are wired up.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -33,22 +34,25 @@ PUSH_GUARD = "github.event_name == 'push'"
 
 REQUIRED_PHASES = ("build", "test", "sonar", "push")
 
+# The shared data file. Both the service (this module) and the skill read it.
+DATA_PATH = Path(__file__).with_name("cookbooks.yaml")
+
 
 @dataclass(frozen=True)
 class Cookbook:
     """Everything language-specific needed to fill the 4-phase skeleton.
 
-    To add a language: instantiate one of these in a new module under
-    ``cookbooks/`` and call ``register(...)``. See java_maven.py for a template.
+    Instances are built from ``cookbooks.yaml`` at import time; you should not
+    need to construct one by hand.
     """
 
     key: str            # registry key = build system, e.g. "maven", "dotnet"
-    language: str       # human label, e.g. "java", "csharp"
+    language: str       # e.g. "java", "csharp"
     display_name: str   # e.g. "Java (Maven)"
     setup: list[Step]   # steps after checkout that install the toolchain
     build: list[str]    # Build-phase shell commands
     test: list[str]     # Test-phase shell commands
-    sonar: list[Step]   # Sonar-phase steps (stack-specific scanner); names must contain "Sonar"
+    sonar: list[Step]   # Sonar-phase steps (from the chosen strategy); names contain "Sonar"
     default_dockerfile: str  # written before the image build only if the repo has no Dockerfile
 
 
@@ -67,6 +71,39 @@ def get(build_system: str) -> Cookbook | None:
 
 def supported() -> list[str]:
     return sorted(_REGISTRY)
+
+
+# --- loading cookbooks.yaml ----------------------------------------------
+
+def _as_lines(value: str | list[str]) -> list[str]:
+    """A command block may be a single (possibly multi-line) string or a list."""
+    if isinstance(value, str):
+        return [value]
+    return [str(v) for v in value]
+
+
+def load(path: Path = DATA_PATH) -> None:
+    """Populate the registry from the data file. Called once at import."""
+    raw = yaml.safe_load(path.read_text())
+    strategies: dict[str, list[Step]] = raw.get("sonar_strategies", {})
+
+    for key, spec in raw.get("cookbooks", {}).items():
+        strategy_name = spec.get("sonar", "generic")
+        if strategy_name not in strategies:
+            raise ValueError(
+                f"cookbook {key!r} references unknown sonar strategy "
+                f"{strategy_name!r} (have: {', '.join(sorted(strategies))})"
+            )
+        register(Cookbook(
+            key=key,
+            language=spec["language"],
+            display_name=spec.get("display_name", spec["language"]),
+            setup=[dict(s) for s in spec.get("setup", [])],
+            build=_as_lines(spec["build"]),
+            test=_as_lines(spec["test"]),
+            sonar=[dict(s) for s in strategies[strategy_name]],
+            default_dockerfile=spec["dockerfile"],
+        ))
 
 
 # --- workflow assembly ---------------------------------------------------
@@ -114,7 +151,7 @@ def _sonar_phase(cookbook: Cookbook) -> list[Step]:
     for step in cookbook.sonar:
         s: Step = {"name": step.get("name", "Sonar scan")}
         s["if"] = SONAR_GUARD
-        # Merge the token into the step env without dropping the cookbook's own.
+        # Merge the token into the step env without dropping the strategy's own.
         env = {"SONAR_TOKEN": "${{ secrets.SONAR_TOKEN }}", "GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}
         env.update(step.get("env", {}))
         s["env"] = env
@@ -201,3 +238,7 @@ def phase_labels(workflow_yaml: str) -> set[str]:
         for step in job.get("steps", [])
     )
     return {p for p in REQUIRED_PHASES if p in names}
+
+
+# Populate the registry from the data file on import.
+load()

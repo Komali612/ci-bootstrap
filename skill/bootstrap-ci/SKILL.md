@@ -42,8 +42,11 @@ phases, in this order**:
 
 The four-phase structure and those two guards live in one place —
 [references/skeleton.md](references/skeleton.md) — and every cookbook obeys it.
-A cookbook only supplies the *language-specific fill-ins*; it can never add,
-drop, or reorder phases.
+A cookbook only supplies the *language-specific fill-ins* (toolchain setup,
+build/test commands, a Sonar strategy, a default Dockerfile); it can never add,
+drop, or reorder phases. Those fill-ins live as data in
+[references/cookbooks.yaml](references/cookbooks.yaml) — the **same file the
+ci-bootstrap service reads**, so the skill and the service can't drift.
 
 **If there is no cookbook for the repo's build system, stop and report an
 error.** Do not improvise a workflow or write YAML from scratch — an honest
@@ -94,45 +97,47 @@ the repo is genuinely ambiguous, say so and ask the user rather than guessing.
 
 ### 3. Select the cookbook
 
-Map the `build_system` to a cookbook file in
-[references/cookbooks/](references/cookbooks/):
+Open [references/cookbooks.yaml](references/cookbooks.yaml) and look up the
+`build_system` under its `cookbooks:` section. The keys present there are the
+supported build systems (currently `maven`, `dotnet`, `pip`, `go`).
 
-| build_system | cookbook |
-|---|---|
-| `maven` | [references/cookbooks/maven.md](references/cookbooks/maven.md) |
-| `dotnet` | [references/cookbooks/dotnet.md](references/cookbooks/dotnet.md) |
-| `pip` | [references/cookbooks/pip.md](references/cookbooks/pip.md) |
-| `go` | [references/cookbooks/go.md](references/cookbooks/go.md) |
+**No entry for the build system → stop.** Tell the user it's unsupported and
+list the keys that *are* present. Do not fall back to writing a workflow
+yourself — an honest "unsupported: <build system>" is the correct outcome.
+(Adding support is a one-line-block change — see *Extending* below.)
 
-**No matching cookbook → stop.** Tell the user the build system is unsupported
-and list the ones that are (the filenames above). Do not fall back to writing a
-workflow yourself. (Adding support is a one-file change — see *Extending* below.)
+### 4. Assemble and write `.github/workflows/ci.yml`
 
-### 4. Render `.github/workflows/ci.yml`
+Read [references/skeleton.md](references/skeleton.md) and assemble the workflow
+from the cookbook entry: the fixed skeleton + the entry's setup / build / test /
+Sonar-strategy / Dockerfile, with the Sonar and Push guards applied. Then fill
+the three placeholders:
 
-Open the chosen cookbook file. It contains a **complete, ready ci.yml** already
-laid out with the four phases. Produce the final file by making exactly these
-substitutions:
-
-- Replace `__SONAR_ORG__` with the repo **owner, lowercased** (SonarCloud
-  lowercases org keys for GitHub-imported orgs).
-- Replace `__SONAR_PROJECT_KEY__` with `<owner>_<name>` (keep the owner's
-  original case — this is the SonarCloud project key convention).
-- Replace `__DEFAULT_BRANCH__` with the default branch you found in step 1.
+- `__SONAR_ORG__` → the repo **owner, lowercased**.
+- `__SONAR_PROJECT_KEY__` → `<owner>_<name>` (owner's original case).
+- `__DEFAULT_BRANCH__` → the default branch from step 1.
 
 Write the result to `.github/workflows/ci.yml` in the clone. **If that file
-already exists, do not overwrite it** — write to `.github/workflows/ci-bootstrap.yml`
+already exists, do not overwrite it** — write `.github/workflows/ci-bootstrap.yml`
 instead and mention this to the user.
 
-Then sanity-check that it parses (cheap insurance, since the template is
-known-good):
+Then validate it — this is the safety net that keeps your assembly honest:
 
 ```bash
-python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1])); print('ci.yml OK')" <scratch>/repo/.github/workflows/ci.yml
+python3 - "$WF" <<'PY'
+import sys, yaml
+data = yaml.safe_load(open(sys.argv[1]))
+steps = data["jobs"]["ci"]["steps"]
+names = " ".join(str(s.get("name","")).lower() for s in steps)
+missing = [p for p in ("build","test","sonar","push") if p not in names]
+assert not missing, f"missing phases: {missing}"
+assert data.get("permissions") == {"contents":"read","packages":"write"}
+print("ci.yml OK — all four phases present, permissions correct")
+PY
 ```
 
-Do not hand-edit the phase structure. If something looks wrong, the fix belongs
-in the cookbook, not in this one output.
+If validation fails, re-read `skeleton.md` and fix the assembly — never hand-wave
+the structure to make it pass.
 
 ### 5. Open the pull request
 
@@ -161,26 +166,25 @@ up.
 
 ## Extending: adding a new language / build system
 
-This is the whole point of the cookbook design — it should be a one-file change:
+This is the whole point of the cookbook design — it should be a one-block change:
 
-1. Copy an existing cookbook (e.g. `references/cookbooks/pip.md`) to
-   `references/cookbooks/<build_system>.md`.
-2. Change only the language-specific parts: the toolchain setup step(s), the
-   Build and Test commands, the Sonar scanner invocation, and the default
-   Dockerfile. Keep the four named phases and both guards exactly as they are —
-   see [references/skeleton.md](references/skeleton.md) for the contract every
-   cookbook must satisfy.
-3. Add a row for it to the two tables in step 3 above.
+1. Add an entry under `cookbooks:` in
+   [references/cookbooks.yaml](references/cookbooks.yaml): its `language`,
+   `setup` steps, `build`/`test` commands, a `sonar` strategy name (usually
+   `generic`), and a `dockerfile`. Only add a `sonar_strategies:` entry if none
+   of the three existing scanners fit — which is rare.
+2. Keep the same file in sync with the service's copy at
+   `src/ci_bootstrap/cookbooks/cookbooks.yaml` (a test asserts they match).
 
-Nothing else changes. If you find yourself editing this SKILL.md's *workflow* to
-support a new language, something has gone wrong — the per-language knowledge
-belongs entirely in the cookbook.
+Nothing else changes — not this SKILL.md, not the skeleton. If you find yourself
+editing the *workflow* to support a new language, something has gone wrong: the
+per-language knowledge belongs entirely in `cookbooks.yaml`.
 
 ## Reference files
 
-- [references/skeleton.md](references/skeleton.md) — the fixed four-phase
-  contract, the Sonar/Push guards, the placeholders, and the checklist for
-  writing a new cookbook. Read this if a cookbook looks inconsistent or you're
-  adding one.
-- [references/cookbooks/](references/cookbooks/) — one file per supported build
-  system, each a complete ci.yml template.
+- [references/cookbooks.yaml](references/cookbooks.yaml) — the per-language data
+  (setup, build, test, Sonar strategy, Dockerfile). The same file the service
+  reads. Read this to find the cookbook for a build system.
+- [references/skeleton.md](references/skeleton.md) — how to assemble a full
+  workflow from a cookbook entry: the fixed skeleton, the Sonar/Push guards, and
+  the placeholders. Read this every time you generate, and when adding a cookbook.

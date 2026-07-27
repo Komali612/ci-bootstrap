@@ -25,6 +25,9 @@ ci-bootstrap = "ci_bootstrap.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+ci_bootstrap = ["cookbooks/cookbooks.yaml"]  # ship the shared cookbook data
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

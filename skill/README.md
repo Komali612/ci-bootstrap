@@ -7,15 +7,22 @@ This folder is a **Claude Code skill** that performs the same job as the
 |---|---|---|
 | What runs it | A Python program (FastAPI / CLI) | Claude Code, following `SKILL.md` |
 | Who classifies | An **Anthropic API call** (Haiku, structured output) | **Claude itself** reads the manifests and decides |
-| How the YAML is made | `cookbooks/*.py` render it in code | `references/cookbooks/*.md` templates Claude fills in |
+| How the YAML is made | reads `cookbooks.yaml`, renders in code | reads the **same** `cookbooks.yaml`, Claude assembles it |
 | How a PR opens | `httpx` against the GitHub REST API | the `gh` CLI |
 | Needs an API key | Yes (to classify) | No |
 
-Both share the **same contract**: clone → classify (language + build system) →
-render a fixed **four-phase** workflow (build → test → sonar → push) from a
-cookbook keyed on the build system → open a PR. Neither ever lets an LLM
-free-write the workflow, and both **error out** on a build system that has no
-cookbook.
+Both share the **same contract** *and the same data*: clone → classify
+(language + build system) → render a fixed **four-phase** workflow (build → test
+→ sonar → push) from a cookbook keyed on the build system → open a PR. Neither
+ever lets an LLM free-write the workflow, and both **error out** on a build
+system that has no cookbook.
+
+The per-language content lives once in **`cookbooks.yaml`** (setup, build/test
+commands, Sonar strategy, Dockerfile). The service reads its copy at
+`src/ci_bootstrap/cookbooks/cookbooks.yaml`; the skill reads the copy under
+`references/`. A test in the service repo asserts the two are identical, so they
+can't drift. The fixed scaffolding (header, guards, push phase) lives in the
+*generator* — `base.py` for the service, `references/skeleton.md` for the skill.
 
 ## Layout
 
@@ -23,8 +30,8 @@ cookbook.
 bootstrap-ci/
 ├── SKILL.md                     the procedure Claude follows
 └── references/
-    ├── skeleton.md              the fixed 4-phase contract + guards (one source of truth)
-    └── cookbooks/               one template per build system (maven, dotnet, pip, go)
+    ├── cookbooks.yaml           per-language data (shared with the service)
+    └── skeleton.md              how to assemble a workflow from a cookbook entry
 ```
 
 ## Using it

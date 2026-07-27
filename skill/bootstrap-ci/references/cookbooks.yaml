@@ -1,0 +1,171 @@
+# cookbooks.yaml — the SINGLE SOURCE OF TRUTH for per-language CI content.
+#
+# This file declares ONLY the parts of a CI workflow that actually differ
+# between languages. Everything that is the same for every language — the
+# name/on/permissions/jobs header, the Checkout step, the Sonar guard, the whole
+# GHCR push phase, and the placeholder filling — lives in the generator, not
+# here (service: cookbooks/base.py; skill: references/skeleton.md).
+#
+# Both the ci-bootstrap SERVICE and the bootstrap-ci SKILL read this same file,
+# so there is one place to edit and one place to add a language.
+#
+# To add a language: add one entry under `cookbooks:` with its toolchain setup,
+# build/test commands, a `sonar:` strategy name, and a default Dockerfile. Only
+# add a `sonar_strategies:` entry if the stack needs a scanner the three below
+# don't cover (which is rare).
+
+# --- Sonar strategies -------------------------------------------------------
+# There are only three ways to run a SonarCloud scan in practice. A cookbook
+# picks one by name. The generator wraps every step here in the Sonar guard
+# (skipped unless a SONAR_TOKEN secret is set), so these never mention the guard.
+# __SONAR_ORG__ / __SONAR_PROJECT_KEY__ are filled in per-repo by the generator.
+sonar_strategies:
+
+  # Build-tool-integrated: the scanner is a Maven goal.
+  maven:
+    - name: Sonar scan
+      run: >-
+        mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+        -Dsonar.host.url=https://sonarcloud.io
+        -Dsonar.organization=__SONAR_ORG__
+        -Dsonar.projectKey=__SONAR_PROJECT_KEY__
+
+  # The .NET scanner is a global tool that wraps a build and runs on a JVM,
+  # so this strategy is several steps.
+  dotnet:
+    - name: "Sonar: set up JDK"
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: "17"
+    - name: "Sonar: install scanner"
+      run: dotnet tool install --global dotnet-sonarscanner
+    - name: Sonar scan begin
+      run: >-
+        dotnet-sonarscanner begin /k:"__SONAR_PROJECT_KEY__" /o:"__SONAR_ORG__"
+        /d:sonar.host.url="https://sonarcloud.io" /d:sonar.token="$SONAR_TOKEN"
+    - name: Sonar build
+      run: dotnet build --configuration Release
+    - name: Sonar scan end
+      run: dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+  # Stack-agnostic CLI scanner — covers python, go, javascript, rust, etc.
+  generic:
+    - name: Sonar scan
+      uses: sonarsource/sonarqube-scan-action@v4
+      env:
+        SONAR_HOST_URL: https://sonarcloud.io
+      with:
+        args: >-
+          -Dsonar.organization=__SONAR_ORG__
+          -Dsonar.projectKey=__SONAR_PROJECT_KEY__
+
+# --- Cookbooks (one per build system) --------------------------------------
+# `key` is the build_system the classifier emits and the generator looks up by.
+# `build`/`test` may be a single string or a list of shell lines.
+# `sonar` names a strategy above (defaults to "generic" if omitted).
+cookbooks:
+
+  maven:
+    language: java
+    display_name: Java (Maven)
+    setup:
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        # JDK 21 for the SonarCloud scanner; Maven still compiles to the pom's target.
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+    build: mvn -B -DskipTests package
+    test: mvn -B verify
+    sonar: maven
+    dockerfile: |
+      FROM maven:3.9-eclipse-temurin-21 AS build
+      WORKDIR /app
+      COPY . .
+      RUN mvn -B -DskipTests package
+
+      FROM eclipse-temurin:21-jre
+      WORKDIR /app
+      COPY --from=build /app/target/*.jar app.jar
+      EXPOSE 8080
+      ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+
+  dotnet:
+    language: csharp
+    display_name: .NET (C#)
+    setup:
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+    build:
+      - dotnet restore
+      - dotnet build --configuration Release --no-restore
+    test: dotnet test --configuration Release --no-build --verbosity normal
+    sonar: dotnet
+    dockerfile: |
+      FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+      WORKDIR /src
+      COPY . .
+      RUN dotnet publish -c Release -o /app
+
+      FROM mcr.microsoft.com/dotnet/aspnet:8.0
+      WORKDIR /app
+      COPY --from=build /app .
+      EXPOSE 8080
+      # TODO: set to your published entrypoint dll, e.g. MyApp.dll
+      ENTRYPOINT ["dotnet", "app.dll"]
+
+  pip:
+    language: python
+    display_name: Python (pip)
+    setup:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+    # Python isn't compiled, so "Build" means install the project + deps.
+    build: |
+      python -m pip install --upgrade pip
+      if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+      if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      if [ -f pyproject.toml ] || [ -f setup.py ]; then pip install -e . || true; fi
+    test: pytest
+    sonar: generic
+    dockerfile: |
+      FROM python:3.12-slim
+      WORKDIR /app
+      COPY . .
+      RUN pip install --no-cache-dir -r requirements.txt
+      EXPOSE 8080
+      # TODO: set to your app's entrypoint, e.g. ["python", "-m", "app"]
+      CMD ["python", "-m", "app"]
+
+  go:
+    language: go
+    display_name: Go (modules)
+    setup:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        # If go.mod pins a newer Go, bump this to match.
+        with:
+          go-version: "1.21"
+          cache: true
+    build:
+      - go mod download
+      - go build ./...
+    test: go test ./...
+    sonar: generic
+    dockerfile: |
+      FROM golang:1.21 AS build
+      WORKDIR /src
+      COPY . .
+      RUN CGO_ENABLED=0 go build -o /app/server ./...
+
+      FROM gcr.io/distroless/static
+      COPY --from=build /app/server /server
+      EXPOSE 8080
+      ENTRYPOINT ["/server"]
