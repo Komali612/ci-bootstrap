@@ -73,6 +73,15 @@ def test_sonar_and_push_are_guarded(build_system):
             assert s.get("if") == PUSH_GUARD
 
 
+def test_push_guard_runs_on_merge_and_manual_but_not_pr():
+    from ci_bootstrap.cookbooks.base import PUSH_GUARD
+    # Publishing should happen on a push to default AND on a manual run, but a
+    # plain pull_request must never publish an image.
+    assert "github.event_name == 'push'" in PUSH_GUARD
+    assert "github.event_name == 'workflow_dispatch'" in PUSH_GUARD
+    assert "pull_request" not in PUSH_GUARD
+
+
 def test_default_dockerfile_written_only_when_absent():
     with_df = generate(_classification("maven"), _snap("pom.xml", "Dockerfile")).content
     without_df = generate(_classification("maven"), _snap("pom.xml")).content

@@ -11,7 +11,8 @@ skill). Adding a language therefore means editing that data file; nothing in
 this module changes. That is the whole extensibility story.
 
 The guards on Sonar (skip unless SONAR_TOKEN is set) and Push (only on a push to
-the default branch) are structural: always present, never user-selectable. They
+the default branch or a manual workflow_dispatch run) are structural: always
+present, never user-selectable. They
 exist so the generated workflow doesn't spuriously fail before its
 secrets/registry are wired up.
 """
@@ -30,7 +31,7 @@ Step = dict[str, Any]
 
 # Structural guards -- fixed, not configurable.
 SONAR_GUARD = "${{ env.SONAR_TOKEN != '' }}"
-PUSH_GUARD = "github.event_name == 'push'"
+PUSH_GUARD = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'"
 
 REQUIRED_PHASES = ("build", "test", "sonar", "push")
 
@@ -181,7 +182,8 @@ def _sonar_phase(cookbook: Cookbook) -> list[Step]:
 
 
 def _push_phase(cookbook: Cookbook, snapshot: RepoSnapshot) -> list[Step]:
-    """Log in to GHCR and push an image, only on a push to the default branch."""
+    """Log in to GHCR and push an image, on a push to the default branch or a
+    manual workflow_dispatch run (never on pull_request)."""
     steps: list[Step] = []
     if not _has_dockerfile(snapshot):
         steps.append({

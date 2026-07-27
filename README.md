@@ -27,7 +27,8 @@ repo_url → ingest → classify (LLM) → generate (cookbook) → open PR → P
 The four phases live in **one place** — `cookbooks/base.py` (the skeleton) — and
 are always emitted. Each language's fill-ins live as data in
 `cookbooks/cookbooks.yaml`. Sonar is skipped until a `SONAR_TOKEN` secret is set;
-the image push runs only on merges to the default branch. These guards are
+the image push runs on merges to the default branch or a manual run (never on a
+plain pull request). These guards are
 structural, not selectable.
 
 ## Adding support for a new language / build system
