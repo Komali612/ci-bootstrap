@@ -36,6 +36,28 @@ class LLMClassification(BaseModel):
     evidence: list[str] = Field(description="Files/facts that support the classification")
 
 
+class LLMCookbook(BaseModel):
+    """Structured output for the LLM fallback: ONLY the fields a cookbook varies.
+
+    The LLM never writes the workflow YAML. It fills in the same slots a normal
+    cookbook supplies; the deterministic skeleton assembles the four phases and
+    guards around them, exactly as for a built-in cookbook.
+    """
+
+    language: str = Field(description="Primary language, lowercase (e.g. elixir, scala, haskell)")
+    setup_steps_yaml: str = Field(
+        description="A YAML sequence of GitHub Actions steps (after checkout) that install the "
+        "toolchain, e.g. an actions/setup-* step with a version. Just the steps, as a YAML list."
+    )
+    build: list[str] = Field(description="Shell commands for the Build phase (install deps / compile)")
+    test: list[str] = Field(description="Shell commands for the Test phase")
+    sonar_strategy: str = Field(
+        description="Which Sonar scanner to use: one of 'maven', 'dotnet', or 'generic'. "
+        "Use 'generic' (the stack-agnostic CLI scanner) unless the build tool has a first-class one."
+    )
+    dockerfile: str = Field(description="A minimal, stack-appropriate multi-stage Dockerfile")
+
+
 class Classification(BaseModel):
     """Handoff contract: classify -> generate."""
 
@@ -50,12 +72,16 @@ class Classification(BaseModel):
 
 
 class GeneratedWorkflow(BaseModel):
-    """The CI workflow a cookbook produced. Deterministic, so always valid."""
+    """The CI workflow a cookbook produced. The skeleton is deterministic even
+    when the cookbook's fill-ins came from the LLM fallback."""
 
     path: str  # e.g. ".github/workflows/ci.yml"
     content: str
     cookbook: str  # which cookbook produced it, e.g. "maven"
     phases: list[str] = ["build", "test", "sonar", "push"]  # always all four
+    llm_authored: bool = False  # True when the cookbook fields were LLM-generated (no built-in cookbook)
+    llm_input_tokens: int | None = None
+    llm_output_tokens: int | None = None
 
 
 class BootstrapResult(BaseModel):

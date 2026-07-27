@@ -21,34 +21,53 @@ repo_url → ingest → classify (LLM) → generate (cookbook) → open PR → P
 |-------|--------|--------------|
 | Ingest | `ingest.py` | Shallow-clone the repo → a small snapshot (file tree + manifest contents). Errors if it can't reach the repo. |
 | Classify | `classify.py` | LLM decides `language` + `build_system` + `test_command`; deterministic heuristic fallback. |
-| Generate | `generate.py` + `cookbooks/` | Look up the cookbook for the build system and render the workflow. **No cookbook → `UnsupportedError`.** |
+| Generate | `generate.py` + `cookbooks/` | Look up the cookbook for the build system and render the workflow. **No cookbook → `UnsupportedError`** — unless the caller opts in to the LLM fallback (below). |
 | Open PR | `github.py` | Commit on a branch, push, open a PR. Assumes push access; errors otherwise. |
 
-The four phases live in **one place** — `cookbooks/base.py` — and are always
-emitted. Sonar is skipped until a `SONAR_TOKEN` secret is set; the image push
-runs only on merges to the default branch. These guards are structural, not
-selectable.
+The four phases live in **one place** — `cookbooks/base.py` (the skeleton) — and
+are always emitted. Each language's fill-ins live as data in
+`cookbooks/cookbooks.yaml`. Sonar is skipped until a `SONAR_TOKEN` secret is set;
+the image push runs only on merges to the default branch. These guards are
+structural, not selectable.
 
 ## Adding support for a new language / build system
 
-Write one small file under `src/ci_bootstrap/cookbooks/` and register it:
+Add one entry under `cookbooks:` in `src/ci_bootstrap/cookbooks/cookbooks.yaml`:
 
-```python
-from .base import Cookbook, register
-
-register(Cookbook(
-    key="npm", language="javascript", display_name="Node.js (npm)",
-    setup=[{"name": "Set up Node", "uses": "actions/setup-node@v4", "with": {"node-version": "20"}}],
-    build=["npm ci"],
-    test=["npm test"],
-    sonar=[{"name": "Sonar scan", "uses": "sonarsource/sonarqube-scan-action@v3"}],
-    default_dockerfile="FROM node:20-slim\n...",
-))
+```yaml
+  npm:
+    language: javascript
+    setup:
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+    build: npm ci
+    test: npm test
+    sonar: generic        # one of the shared strategies (maven | dotnet | generic)
+    dockerfile: |
+      FROM node:20-slim
+      ...
 ```
 
-Then add `from . import npm` to `cookbooks/__init__.py`. Nothing else changes —
-the 4-phase skeleton and guards are inherited from `base.py`. Currently shipped:
-**Java (Maven)** and **.NET (C#)**.
+Nothing else changes — the 4-phase skeleton and guards come from `base.py`, and
+the bootstrap-ci skill reads the same file (a test asserts the two copies match).
+Currently shipped: **maven**, **dotnet**, **pip**, **go**.
+
+## LLM fallback for unsupported stacks (opt-in)
+
+If a repo's build system has no cookbook, you can let an LLM author *just the
+cookbook fields* — toolchain setup, build/test commands, a Sonar strategy, and a
+Dockerfile (`author.py`). Those slot into the **same deterministic skeleton**, so
+the four phases and both guards are still code-owned; the LLM never writes the
+workflow YAML. It's off by default because it turns an honest "unsupported" into
+a best-effort guess that should be reviewed.
+
+- **UI:** tick *"LLM fallback for unsupported languages"* before Run.
+- **CLI:** `ci-bootstrap <url> --llm-fallback`
+- **API:** `POST /bootstrap {"repo_url": "...", "allow_llm_fallback": true}`
+
+The result is flagged `llm_authored: true` and the PR/UI shows a review warning.
+Needs `ANTHROPIC_API_KEY`.
 
 ## Running
 

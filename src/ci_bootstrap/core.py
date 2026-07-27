@@ -20,7 +20,13 @@ from .github import PROpenError, open_pr, resolve_token
 from .ingest import IngestError, ingest
 
 
-def bootstrap(repo_url: str, *, open_pr_flag: bool = True, token: str | None = None) -> BootstrapResult:
+def bootstrap(
+    repo_url: str,
+    *,
+    open_pr_flag: bool = True,
+    token: str | None = None,
+    allow_llm_fallback: bool = False,
+) -> BootstrapResult:
     load_dotenv()
     token = token or resolve_token()
 
@@ -39,12 +45,17 @@ def bootstrap(repo_url: str, *, open_pr_flag: bool = True, token: str | None = N
         except Exception as exc:
             return BootstrapResult(repo_url=repo_url, status="error", message=f"classification failed: {exc}")
 
-        # 3. Generate
+        # 3. Generate (optionally via the LLM cookbook fallback)
         try:
-            workflow = generate(classification, snapshot)
+            workflow = generate(classification, snapshot, allow_llm_fallback=allow_llm_fallback)
         except UnsupportedError as exc:
             return BootstrapResult(
                 repo_url=repo_url, status="error", classification=classification, message=str(exc)
+            )
+        except Exception as exc:  # LLM fallback failure (AuthorError, API errors, ...)
+            return BootstrapResult(
+                repo_url=repo_url, status="error", classification=classification,
+                message=f"LLM cookbook fallback failed: {exc}",
             )
 
         # 4. Open PR (unless we were asked only to generate)

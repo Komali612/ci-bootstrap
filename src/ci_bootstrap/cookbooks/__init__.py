@@ -7,6 +7,18 @@ no per-language Python module to write.
 
 from __future__ import annotations
 
-from .base import Cookbook, get, load, register, render_workflow, supported
+from .base import (
+    Cookbook,
+    get,
+    load,
+    register,
+    render_workflow,
+    sonar_strategy,
+    strategy_names,
+    supported,
+)
 
-__all__ = ["Cookbook", "get", "load", "register", "render_workflow", "supported"]
+__all__ = [
+    "Cookbook", "get", "load", "register", "render_workflow",
+    "sonar_strategy", "strategy_names", "supported",
+]

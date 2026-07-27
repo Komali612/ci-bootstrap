@@ -59,6 +59,7 @@ class Cookbook:
 # --- registry ------------------------------------------------------------
 
 _REGISTRY: dict[str, Cookbook] = {}
+_STRATEGIES: dict[str, list[Step]] = {}  # sonar strategies, for reuse by the LLM fallback
 
 
 def register(cookbook: Cookbook) -> None:
@@ -71,6 +72,16 @@ def get(build_system: str) -> Cookbook | None:
 
 def supported() -> list[str]:
     return sorted(_REGISTRY)
+
+
+def strategy_names() -> list[str]:
+    return sorted(_STRATEGIES)
+
+
+def sonar_strategy(name: str) -> list[Step]:
+    """Steps for a named Sonar strategy, falling back to 'generic'."""
+    steps = _STRATEGIES.get(name) or _STRATEGIES.get("generic") or []
+    return [dict(s) for s in steps]
 
 
 # --- loading cookbooks.yaml ----------------------------------------------
@@ -86,6 +97,8 @@ def load(path: Path = DATA_PATH) -> None:
     """Populate the registry from the data file. Called once at import."""
     raw = yaml.safe_load(path.read_text())
     strategies: dict[str, list[Step]] = raw.get("sonar_strategies", {})
+    _STRATEGIES.clear()
+    _STRATEGIES.update(strategies)
 
     for key, spec in raw.get("cookbooks", {}).items():
         strategy_name = spec.get("sonar", "generic")
