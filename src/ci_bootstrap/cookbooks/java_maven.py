@@ -10,12 +10,13 @@ from __future__ import annotations
 
 from .base import Cookbook, register
 
-# SonarCloud defaults; the reviewer overrides the org/projectKey if theirs differ.
+# SonarCloud args. The org/projectKey are filled in from the repo at generation
+# time (see base._fill_placeholders); edit them if your SonarCloud setup differs.
 # The Sonar step is skipped entirely until a SONAR_TOKEN secret is set (see base).
 _SONAR_ARGS = (
     "-Dsonar.host.url=https://sonarcloud.io "
-    "-Dsonar.organization=${{ github.repository_owner }} "
-    "-Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}"
+    "-Dsonar.organization=__SONAR_ORG__ "
+    "-Dsonar.projectKey=__SONAR_PROJECT_KEY__"
 )
 
 register(Cookbook(

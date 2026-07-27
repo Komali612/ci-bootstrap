@@ -80,6 +80,19 @@ def test_default_dockerfile_written_only_when_absent():
     assert "Write default Dockerfile" in without_df
 
 
+@pytest.mark.parametrize("build_system", ["maven", "dotnet"])
+def test_sonar_org_is_lowercased_and_project_key_preserves_case(build_system):
+    snap = RepoSnapshot(
+        repo_url="https://github.com/Komali612/java-service", owner="Komali612",
+        name="java-service", default_branch="main", tree=["pom.xml"],
+    )
+    wf = generate(_classification(build_system), snap).content
+    assert "__SONAR_ORG__" not in wf and "__SONAR_PROJECT_KEY__" not in wf  # placeholders filled
+    assert "komali612" in wf                       # org is lowercased (SonarCloud convention)
+    assert "Komali612_java-service" in wf          # project key keeps original case
+    assert "organization=Komali612" not in wf and 'o:"Komali612"' not in wf  # not the wrong case
+
+
 def test_push_targets_ghcr():
     wf = generate(_classification("dotnet"), _snap()).content
     assert "ghcr.io/${{ github.repository }}" in wf

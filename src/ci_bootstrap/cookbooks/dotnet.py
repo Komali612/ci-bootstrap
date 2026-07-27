@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from .base import Cookbook, register
 
+# Org/projectKey are filled in from the repo at generation time (see
+# base._fill_placeholders); edit them if your SonarCloud setup differs.
 _SONAR_BEGIN = (
     'dotnet-sonarscanner begin '
-    '/k:"${{ github.repository_owner }}_${{ github.event.repository.name }}" '
-    '/o:"${{ github.repository_owner }}" '
+    '/k:"__SONAR_PROJECT_KEY__" '
+    '/o:"__SONAR_ORG__" '
     '/d:sonar.host.url="https://sonarcloud.io" '
     '/d:sonar.token="$SONAR_TOKEN"'
 )

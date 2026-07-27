@@ -90,7 +90,22 @@ def render_workflow(cookbook: Cookbook, snapshot: RepoSnapshot) -> str:
         "permissions": {"contents": "read", "packages": "write"},
         "jobs": {"ci": {"runs-on": "ubuntu-latest", "steps": steps}},
     }
-    return _dump(workflow)
+    return _fill_placeholders(_dump(workflow), snapshot)
+
+
+# Cookbooks reference these placeholders; we fill them in at generation time from
+# the snapshot so the emitted YAML is concrete and readable. SonarCloud org keys
+# are lowercase (its convention for GitHub-imported orgs), while project keys keep
+# the owner's original case -- deriving them from ${{ github.* }} at runtime gets
+# the org-key case wrong, which is a hard error.
+SONAR_ORG_PLACEHOLDER = "__SONAR_ORG__"
+SONAR_PROJECT_KEY_PLACEHOLDER = "__SONAR_PROJECT_KEY__"
+
+
+def _fill_placeholders(text: str, snapshot: RepoSnapshot) -> str:
+    text = text.replace(SONAR_ORG_PLACEHOLDER, snapshot.owner.lower())
+    text = text.replace(SONAR_PROJECT_KEY_PLACEHOLDER, f"{snapshot.owner}_{snapshot.name}")
+    return text
 
 
 def _sonar_phase(cookbook: Cookbook) -> list[Step]:
