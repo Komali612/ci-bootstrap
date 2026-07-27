@@ -150,11 +150,16 @@ def render_workflow(cookbook: Cookbook, snapshot: RepoSnapshot) -> str:
 # the org-key case wrong, which is a hard error.
 SONAR_ORG_PLACEHOLDER = "__SONAR_ORG__"
 SONAR_PROJECT_KEY_PLACEHOLDER = "__SONAR_PROJECT_KEY__"
+# GHCR (like all Docker registries) requires the image path to be lowercase, but
+# ${{ github.repository }} preserves the owner's original case -- so we bake a
+# lowercased image reference in at generation time instead of using it at runtime.
+IMAGE_PLACEHOLDER = "__IMAGE__"
 
 
 def _fill_placeholders(text: str, snapshot: RepoSnapshot) -> str:
     text = text.replace(SONAR_ORG_PLACEHOLDER, snapshot.owner.lower())
     text = text.replace(SONAR_PROJECT_KEY_PLACEHOLDER, f"{snapshot.owner}_{snapshot.name}")
+    text = text.replace(IMAGE_PLACEHOLDER, f"ghcr.io/{snapshot.owner.lower()}/{snapshot.name.lower()}")
     return text
 
 
@@ -201,7 +206,7 @@ def _push_phase(cookbook: Cookbook, snapshot: RepoSnapshot) -> list[Step]:
         "with": {
             "context": ".",
             "push": True,
-            "tags": "ghcr.io/${{ github.repository }}:${{ github.sha }}",
+            "tags": IMAGE_PLACEHOLDER + ":${{ github.sha }}",
         },
     })
     return steps

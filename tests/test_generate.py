@@ -93,9 +93,24 @@ def test_sonar_org_is_lowercased_and_project_key_preserves_case(build_system):
     assert "organization=Komali612" not in wf and 'o:"Komali612"' not in wf  # not the wrong case
 
 
-def test_push_targets_ghcr():
+def test_push_targets_ghcr_with_lowercase_image():
     wf = generate(_classification("dotnet"), _snap()).content
-    assert "ghcr.io/${{ github.repository }}" in wf
+    assert "ghcr.io/x/demo:${{ github.sha }}" in wf
+    # Must NOT use ${{ github.repository }}: it preserves owner case, and GHCR
+    # rejects uppercase image paths ("repository name must be lowercase").
+    assert "${{ github.repository }}" not in wf
+
+
+def test_image_tag_is_lowercased_for_uppercase_owner():
+    # Regression: an owner/repo with uppercase letters must still yield a valid,
+    # lowercase GHCR tag -- this is the bug that failed python-service's push.
+    snap = RepoSnapshot(
+        repo_url="https://github.com/Komali612/Python-Service", owner="Komali612",
+        name="Python-Service", default_branch="main", tree=[],
+    )
+    wf = generate(_classification("dotnet"), snap).content
+    assert "ghcr.io/komali612/python-service:${{ github.sha }}" in wf
+    assert "ghcr.io/Komali612" not in wf and "__IMAGE__" not in wf
 
 
 def test_default_branch_flows_into_push_trigger():
