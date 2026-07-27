@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ci-bootstrap"
+version = "0.1.0"
+description = "A service that bootstraps CI into a repo: classify the language with an LLM, generate a 4-phase CI workflow from deterministic cookbooks, and open a pull request."
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.40",   # LLM classification (structured outputs)
+    "httpx>=0.27",       # GitHub REST API
+    "pyyaml>=6.0",       # emit + self-validate the generated workflow
+    "fastapi>=0.110",    # the service is the first-class interface
+    "uvicorn>=0.29",     # ASGI server for the service
+    "pydantic>=2.6",     # contracts
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+ci-bootstrap = "ci_bootstrap.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
