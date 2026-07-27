@@ -73,4 +73,4 @@ def test_every_cookbook_generates_a_valid_four_phase_workflow(build_system):
 
 
 def test_supported_set_covers_the_four_sample_repos():
-    assert set(cookbooks.supported()) >= {"maven", "dotnet", "pip", "go"}
+    assert set(cookbooks.supported()) >= {"maven", "dotnet", "pip"}

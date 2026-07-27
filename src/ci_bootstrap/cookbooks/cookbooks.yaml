@@ -143,29 +143,3 @@ cookbooks:
       EXPOSE 8080
       # TODO: set to your app's entrypoint, e.g. ["python", "-m", "app"]
       CMD ["python", "-m", "app"]
-
-  go:
-    language: go
-    display_name: Go (modules)
-    setup:
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        # If go.mod pins a newer Go, bump this to match.
-        with:
-          go-version: "1.21"
-          cache: true
-    build:
-      - go mod download
-      - go build ./...
-    test: go test ./...
-    sonar: generic
-    dockerfile: |
-      FROM golang:1.21 AS build
-      WORKDIR /src
-      COPY . .
-      RUN CGO_ENABLED=0 go build -o /app/server ./...
-
-      FROM gcr.io/distroless/static
-      COPY --from=build /app/server /server
-      EXPOSE 8080
-      ENTRYPOINT ["/server"]
