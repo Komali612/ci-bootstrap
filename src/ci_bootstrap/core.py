@@ -10,8 +10,10 @@ including the classification/workflow produced before the failure.
 from __future__ import annotations
 
 import tempfile
+import time
 from pathlib import Path
 
+from . import telemetry
 from .classify import classify
 from .config import load_dotenv, sonar_token
 from .contracts import BootstrapResult
@@ -21,6 +23,23 @@ from .ingest import IngestError, ingest
 
 
 def bootstrap(
+    repo_url: str,
+    *,
+    open_pr_flag: bool = True,
+    token: str | None = None,
+    allow_llm_fallback: bool = False,
+) -> BootstrapResult:
+    """Run a bootstrap and record one telemetry event (recording never fails it)."""
+    start = time.monotonic()
+    result = _run(repo_url, open_pr_flag=open_pr_flag, token=token, allow_llm_fallback=allow_llm_fallback)
+    try:
+        telemetry.record(result, int((time.monotonic() - start) * 1000))
+    except Exception as exc:  # telemetry is best-effort; never break the bootstrap
+        print(f"[telemetry] could not record event: {exc}")
+    return result
+
+
+def _run(
     repo_url: str,
     *,
     open_pr_flag: bool = True,

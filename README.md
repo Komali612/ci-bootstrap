@@ -88,6 +88,25 @@ a best-effort guess that should be reviewed.
 The result is flagged `llm_authored: true` and the PR/UI shows a review warning.
 Needs `ANTHROPIC_API_KEY`.
 
+## Telemetry & dashboard
+
+Every bootstrap appends one event (classification method/confidence, tokens,
+cookbook vs `llm_authored`, status, PR number, `sonar_secret_set`, duration) to a
+local JSONL file — `~/.ci-bootstrap/events.jsonl` by default (override with
+`CI_BOOTSTRAP_DATA_DIR`). Recording is best-effort and never fails a bootstrap.
+
+The service exposes it two ways:
+
+- **`GET /dashboard`** — a self-contained (no external libraries) dashboard for a
+  service owner / platform team: KPI tiles (runs, success rate, PRs, LLM-fallback
+  rate, token spend + est. cost, p95 latency), bootstraps-over-time, language /
+  build-system / outcome / method breakdowns, and a recent-runs table. Linked from
+  the home page; theme-aware.
+- **`GET /telemetry/data`** — the aggregated JSON behind it (also handy to `curl | jq`).
+
+Storing to disk (not in-memory counters) is deliberate: the local service process
+is ephemeral, so metrics must survive restarts.
+
 ## Running
 
 Set secrets once in a gitignored `.env` at the repo root:
