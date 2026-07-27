@@ -96,7 +96,7 @@ cookbook's `dockerfile` where shown:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          tags: __IMAGE__:${{ github.sha }}
 ```
 
 ## Fill the placeholders
@@ -109,6 +109,7 @@ them everywhere before writing the file:
 | `__DEFAULT_BRANCH__` | the repo's default branch (e.g. `main`) | scope the push trigger |
 | `__SONAR_ORG__` | repo **owner, lowercased** | SonarCloud lowercases GitHub-imported org keys |
 | `__SONAR_PROJECT_KEY__` | `<owner>_<name>` (owner's original case) | SonarCloud project-key convention |
+| `__IMAGE__` | `ghcr.io/<owner>/<name>`, **both lowercased** | GHCR (like all Docker registries) rejects uppercase image paths; `${{ github.repository }}` would keep the owner's case and fail with "repository name must be lowercase" |
 
 ## Why it's shaped this way
 
