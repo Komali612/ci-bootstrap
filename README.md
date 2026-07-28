@@ -109,6 +109,9 @@ is ephemeral, so metrics must survive restarts.
 
 ## Running
 
+> **First time on a new machine (or not technical)?** See **[SETUP.md](SETUP.md)** for a
+> step-by-step guide — including how to get each key — or just run `bash setup.sh`.
+
 Set secrets once in a gitignored `.env` at the repo root:
 
 ```
