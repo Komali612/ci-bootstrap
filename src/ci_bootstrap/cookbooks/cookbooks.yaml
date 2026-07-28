@@ -19,6 +19,11 @@
 # picks one by name. The generator wraps every step here in the Sonar guard
 # (skipped unless a SONAR_TOKEN secret is set), so these never mention the guard.
 # __SONAR_ORG__ / __SONAR_PROJECT_KEY__ are filled in per-repo by the generator.
+#
+# sonar.qualitygate.wait=true makes the scanner WAIT for SonarCloud's quality
+# gate and FAIL the build if it is not passing. The gate covers security
+# (new vulnerabilities / security rating) as well as coverage and reliability,
+# so a PR that introduces a vulnerability is blocked and reported in SonarCloud.
 sonar_strategies:
 
   # Build-tool-integrated: the scanner is a Maven goal.
@@ -29,6 +34,7 @@ sonar_strategies:
         -Dsonar.host.url=https://sonarcloud.io
         -Dsonar.organization=__SONAR_ORG__
         -Dsonar.projectKey=__SONAR_PROJECT_KEY__
+        -Dsonar.qualitygate.wait=true
 
   # The .NET scanner is a global tool that wraps a build and runs on a JVM,
   # so this strategy is several steps.
@@ -44,6 +50,7 @@ sonar_strategies:
       run: >-
         dotnet-sonarscanner begin /k:"__SONAR_PROJECT_KEY__" /o:"__SONAR_ORG__"
         /d:sonar.host.url="https://sonarcloud.io" /d:sonar.token="$SONAR_TOKEN"
+        /d:sonar.qualitygate.wait=true
     - name: Sonar build
       run: dotnet build --configuration Release
     - name: Sonar scan end
@@ -59,6 +66,7 @@ sonar_strategies:
         args: >-
           -Dsonar.organization=__SONAR_ORG__
           -Dsonar.projectKey=__SONAR_PROJECT_KEY__
+          -Dsonar.qualitygate.wait=true
 
 # --- Cookbooks (one per build system) --------------------------------------
 # `key` is the build_system the classifier emits and the generator looks up by.
