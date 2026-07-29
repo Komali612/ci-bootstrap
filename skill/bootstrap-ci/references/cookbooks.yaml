@@ -35,6 +35,7 @@ sonar_strategies:
         -Dsonar.organization=__SONAR_ORG__
         -Dsonar.projectKey=__SONAR_PROJECT_KEY__
         -Dsonar.qualitygate.wait=true
+        -Dsonar.exclusions=**/.github/**
 
   # The .NET scanner is a global tool that wraps a build and runs on a JVM,
   # so this strategy is several steps.
@@ -50,7 +51,7 @@ sonar_strategies:
       run: >-
         dotnet-sonarscanner begin /k:"__SONAR_PROJECT_KEY__" /o:"__SONAR_ORG__"
         /d:sonar.host.url="https://sonarcloud.io" /d:sonar.token="$SONAR_TOKEN"
-        /d:sonar.qualitygate.wait=true
+        /d:sonar.qualitygate.wait=true /d:sonar.exclusions="**/.github/**"
     - name: Sonar build
       run: dotnet build --configuration Release
     - name: Sonar scan end
@@ -67,6 +68,7 @@ sonar_strategies:
           -Dsonar.organization=__SONAR_ORG__
           -Dsonar.projectKey=__SONAR_PROJECT_KEY__
           -Dsonar.qualitygate.wait=true
+          -Dsonar.exclusions=**/.github/**
 
 # --- Cookbooks (one per build system) --------------------------------------
 # `key` is the build_system the classifier emits and the generator looks up by.
