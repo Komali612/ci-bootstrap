@@ -15,11 +15,12 @@ from pathlib import Path
 
 from . import telemetry
 from .classify import classify
-from .config import load_dotenv, sonar_token
+from .config import load_dotenv, sonar_org, sonar_token
 from .contracts import BootstrapResult
 from .generate import UnsupportedError, generate
 from .github import PROpenError, open_pr, resolve_token, set_repo_secret
 from .ingest import IngestError, ingest
+from .sonar import provision_project
 
 
 def bootstrap(
@@ -89,8 +90,10 @@ def _run(
                 message="no GitHub token available to open a PR (set GH_TOKEN or run `gh auth login`)",
             )
 
-        # 3.5 Bake the SonarCloud token into the repo's Actions secrets, if the
-        # service is configured with one -- so developers never set it by hand.
+        # 3.5 Set up SonarCloud so the repo's FIRST scan works, with no manual
+        # steps: create the project (Automatic Analysis off by default) and bake
+        # the token into the repo's Actions secrets.
+        sonar_project = _provision_sonar_project(snapshot)
         sonar_secret_set = _inject_sonar_secret(snapshot, token)
 
         clone_dir = workdir / snapshot.name
@@ -99,15 +102,31 @@ def _run(
         except PROpenError as exc:
             return BootstrapResult(
                 repo_url=repo_url, status="error", classification=classification, workflow=workflow,
-                sonar_secret_set=sonar_secret_set, message=str(exc),
+                sonar_secret_set=sonar_secret_set, sonar_project=sonar_project, message=str(exc),
             )
 
         return BootstrapResult(
             repo_url=repo_url, status="opened", classification=classification, workflow=workflow,
             branch=branch, pr_number=pr_number, pr_url=pr_url,
-            sonar_secret_set=sonar_secret_set,
+            sonar_secret_set=sonar_secret_set, sonar_project=sonar_project,
             message=f"opened PR #{pr_number}",
         )
+
+
+def _provision_sonar_project(snapshot) -> str | None:
+    """Create the repo's SonarCloud project so its first scan doesn't fail.
+    Returns "created"/"exists", "error", or None if Sonar isn't configured."""
+    org, token = sonar_org(), sonar_token()
+    if not (org and token):
+        return None
+    key = f"{snapshot.owner}_{snapshot.name}"
+    try:
+        status = provision_project(org, key, snapshot.name, token)
+        print(f"[bootstrap] SonarCloud project {key}: {status}")
+        return status
+    except Exception as exc:  # non-fatal: PR still opens; first scan may need manual setup
+        print(f"[bootstrap] could not provision SonarCloud project {key}: {exc}")
+        return "error"
 
 
 def _inject_sonar_secret(snapshot, token: str) -> bool | None:

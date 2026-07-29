@@ -142,6 +142,11 @@ function render(r){
   } else {
     h += '<div class="banner err">\\u274c ' + esc(r.message) + '</div>';
   }
+  if (r.sonar_project === 'created' || r.sonar_project === 'exists') {
+    h += '<div class="banner ok">\\ud83e\\udd9a SonarCloud project ' + (r.sonar_project === 'created' ? 'created (Automatic Analysis off)' : 'already set up') + '</div>';
+  } else if (r.sonar_project === 'error') {
+    h += '<div class="banner warn">\\u26a0\\ufe0f Could not provision the SonarCloud project \\u2014 the first scan may need manual setup</div>';
+  }
   if (r.sonar_secret_set === true) {
     h += '<div class="banner ok">\\ud83d\\udd10 SONAR_TOKEN written to the repo\\u2019s Actions secrets</div>';
   } else if (r.sonar_secret_set === false) {
