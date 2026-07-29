@@ -51,7 +51,9 @@ sonar_strategies:
       run: >-
         dotnet-sonarscanner begin /k:"__SONAR_PROJECT_KEY__" /o:"__SONAR_ORG__"
         /d:sonar.host.url="https://sonarcloud.io" /d:sonar.token="$SONAR_TOKEN"
-        /d:sonar.qualitygate.wait=true /d:sonar.exclusions="**/.github/**"
+        /d:sonar.qualitygate.wait=true
+        /d:sonar.exclusions="**/.github/**,**/Program.cs"
+        /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
     - name: Sonar build
       run: dotnet build --configuration Release
     - name: Sonar scan end
@@ -68,7 +70,10 @@ sonar_strategies:
           -Dsonar.organization=__SONAR_ORG__
           -Dsonar.projectKey=__SONAR_PROJECT_KEY__
           -Dsonar.qualitygate.wait=true
-          -Dsonar.exclusions=**/.github/**
+          -Dsonar.exclusions=**/.github/**,**/main.py,**/__main__.py,**/main.go,**/wsgi.py,**/asgi.py
+          -Dsonar.coverage.exclusions=**/main.py,**/__main__.py,**/main.go,**/wsgi.py,**/asgi.py,**/*_test.go,**/test_*.py,**/*_test.py,**/tests/**
+          -Dsonar.python.coverage.reportPaths=coverage.xml
+          -Dsonar.go.coverage.reportPaths=coverage.out
 
 # --- Cookbooks (one per build system) --------------------------------------
 # `key` is the build_system the classifier emits and the generator looks up by.
@@ -113,7 +118,13 @@ cookbooks:
     build:
       - dotnet restore
       - dotnet build --configuration Release --no-restore
-    test: dotnet test --configuration Release --no-build --verbosity normal
+    # Collect coverage in OpenCover format (coverlet.collector, via a runsettings)
+    # so the Sonar .NET scanner can read it from sonar.cs.opencover.reportsPaths.
+    test: |
+      cat > coverlet.runsettings <<'EOF'
+      <RunSettings><DataCollectionRunSettings><DataCollectors><DataCollector friendlyName="XPlat Code Coverage"><Configuration><Format>opencover</Format></Configuration></DataCollector></DataCollectors></DataCollectionRunSettings></RunSettings>
+      EOF
+      dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --settings coverlet.runsettings --results-directory ./TestResults
     sonar: dotnet
     dockerfile: |
       FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
@@ -140,10 +151,13 @@ cookbooks:
     # Python isn't compiled, so "Build" means install the project + deps.
     build: |
       python -m pip install --upgrade pip
+      pip install pytest pytest-cov
       if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
       if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       if [ -f pyproject.toml ] || [ -f setup.py ]; then pip install -e . || true; fi
-    test: pytest
+    # Emit Cobertura XML so SonarCloud can measure coverage (read via the generic
+    # strategy's sonar.python.coverage.reportPaths).
+    test: pytest --cov=. --cov-report=xml
     sonar: generic
     dockerfile: |
       FROM python:3.12-slim
@@ -153,3 +167,31 @@ cookbooks:
       EXPOSE 8080
       # TODO: set to your app's entrypoint, e.g. ["python", "-m", "app"]
       CMD ["python", "-m", "app"]
+
+  go:
+    language: go
+    display_name: Go (modules)
+    setup:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        # If go.mod pins a newer Go, bump this to match.
+        with:
+          go-version: "1.21"
+          cache: true
+    build:
+      - go mod download
+      - go build ./...
+    # -coverprofile emits coverage.out, read by the generic strategy's
+    # sonar.go.coverage.reportPaths.
+    test: go test -coverprofile=coverage.out ./...
+    sonar: generic
+    dockerfile: |
+      FROM golang:1.21 AS build
+      WORKDIR /src
+      COPY . .
+      RUN CGO_ENABLED=0 go build -o /app/server ./...
+
+      FROM gcr.io/distroless/static
+      COPY --from=build /app/server /server
+      EXPOSE 8080
+      ENTRYPOINT ["/server"]

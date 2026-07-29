@@ -70,7 +70,7 @@ Add one entry under `cookbooks:` in `src/ci_bootstrap/cookbooks/cookbooks.yaml`:
 
 Nothing else changes — the 4-phase skeleton and guards come from `base.py`, and
 the bootstrap-ci skill reads the same file (a test asserts the two copies match).
-Currently shipped: **maven**, **dotnet**, **pip**. (go removed on purpose to demo the LLM fallback.)
+Currently shipped: **maven**, **dotnet**, **pip**, **go**. (Coverage is measured for each; entrypoint/bootstrap files are excluded.)
 
 ## LLM fallback for unsupported stacks (opt-in)
 
