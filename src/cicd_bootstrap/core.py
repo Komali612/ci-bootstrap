@@ -390,8 +390,13 @@ def add_cd_harness(
     token: str | None = None,
     auto_deploy: bool = True,
     open_pr_flag: bool = True,
+    allow_llm_fallback: bool = False,
 ) -> BootstrapResult:
-    """Set up CD-via-Harness for a repo. Requires HARNESS_* in .env (see .env.example)."""
+    """Set up CD-via-Harness for a repo. Requires HARNESS_* in .env (see .env.example).
+
+    ``allow_llm_fallback`` lets the LLM work out the deploy port when the repo's
+    Dockerfile has no ``EXPOSE`` (for unusual apps); otherwise it defaults to 8080.
+    """
     from . import harness  # local import: Harness is optional; only needed on this path
 
     load_dotenv()
@@ -416,7 +421,9 @@ def add_cd_harness(
             )
 
         try:
-            provisioned = harness.deploy_via_harness(snapshot, token or "", auto_deploy=auto_deploy)
+            provisioned = harness.deploy_via_harness(
+                snapshot, token or "", auto_deploy=auto_deploy, allow_llm_fallback=allow_llm_fallback,
+            )
         except harness.HarnessError as exc:
             return BootstrapResult(
                 repo_url=repo_url, status="error", kind="cd",
@@ -438,7 +445,7 @@ def add_cd_harness(
         if tag:
             try:
                 harness.trigger_deploy(webhook_url, tag)
-                port = detect_port(snapshot)
+                port = detect_port(snapshot, allow_llm_fallback=allow_llm_fallback)
                 deploy_note = (f" Triggered a deploy of the current image (tag {tag[:7]}) on your laptop "
                                f"delegate — it should come up at http://localhost:{port}/ shortly.")
             except Exception as exc:  # non-fatal: provisioning still succeeded

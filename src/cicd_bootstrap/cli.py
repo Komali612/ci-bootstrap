@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .core import add_cd, bootstrap
+from .core import add_cd_harness, bootstrap
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -60,8 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     gen_agent = agent or "ci"
     if gen_agent == "both":
         ci = bootstrap(args.repo_url, open_pr_flag=not args.no_pr, allow_llm_fallback=args.llm_fallback)
-        cd = add_cd(args.repo_url, open_pr_flag=not args.no_pr,
-                    auto_deploy=args.auto_deploy, auto_handoff=not args.manual_handoff)
+        cd = add_cd_harness(args.repo_url, open_pr_flag=not args.no_pr,
+                            auto_deploy=args.auto_deploy, allow_llm_fallback=args.llm_fallback)
         for tag, res in (("CI", ci), ("CD", cd)):
             line = f"[{tag}] status: {res.status} -- {res.message}"
             if res.pr_url:
@@ -70,8 +70,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if {ci.status, cd.status} <= {"opened", "generated"} else 1
 
     if gen_agent == "cd":
-        result = add_cd(args.repo_url, open_pr_flag=not args.no_pr,
-                        auto_deploy=args.auto_deploy, auto_handoff=not args.manual_handoff)
+        result = add_cd_harness(args.repo_url, open_pr_flag=not args.no_pr,
+                                auto_deploy=args.auto_deploy, allow_llm_fallback=args.llm_fallback)
     else:
         result = bootstrap(args.repo_url, open_pr_flag=not args.no_pr, allow_llm_fallback=args.llm_fallback)
 

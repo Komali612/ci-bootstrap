@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from . import telemetry
 from .contracts import BootstrapResult
-from .core import add_cd, bootstrap
+from .core import add_cd_harness, bootstrap
 
 app = FastAPI(title="cicd-bootstrap", version="0.1.0")
 
@@ -30,6 +30,7 @@ class CDRequest(BaseModel):
     repo_url: str
     open_pr: bool = True
     auto_deploy: bool = False  # True: deploy straight to prod; False: pause for approval
+    allow_llm_fallback: bool = False  # let the LLM work out the port if the Dockerfile has none
 
 
 class SetupRequest(BaseModel):
@@ -81,7 +82,10 @@ def cd_endpoint(req: CDRequest) -> BootstrapResult:
     # Same contract as /bootstrap, but generates a CD (deploy) workflow: pull the
     # CI-built image and run it on the self-hosted runner, with health check and
     # rollback. auto_deploy=False adds a click-to-approve gate.
-    return add_cd(req.repo_url, open_pr_flag=req.open_pr, auto_deploy=req.auto_deploy)
+    return add_cd_harness(
+        req.repo_url, open_pr_flag=req.open_pr, auto_deploy=req.auto_deploy,
+        allow_llm_fallback=req.allow_llm_fallback,
+    )
 
 
 @app.post("/setup", response_model=SetupResult)
@@ -92,9 +96,9 @@ def setup_endpoint(req: SetupRequest) -> SetupResult:
     two agents are unchanged underneath; this just drives them from one request.
     """
     ci = bootstrap(req.repo_url, open_pr_flag=req.open_pr, allow_llm_fallback=req.allow_llm_fallback)
-    cd = add_cd(
+    cd = add_cd_harness(
         req.repo_url, open_pr_flag=req.open_pr,
-        auto_deploy=req.auto_deploy, auto_handoff=req.auto_handoff,
+        auto_deploy=req.auto_deploy, allow_llm_fallback=req.allow_llm_fallback,
     )
     return SetupResult(ci=ci, cd=cd)
 
