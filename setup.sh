@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# One-command setup for ci-bootstrap. Safe to run more than once.
+# One-command setup for cicd-bootstrap. Safe to run more than once.
 # It checks your tools, creates an isolated Python environment, installs the
 # app, makes your .env file, and tells you if any keys are still missing.
 # It does NOT touch a .env you already have.
@@ -40,7 +40,7 @@ say "2/5 · Creating an isolated Python environment (.venv)"
 ./.venv/bin/python -m pip install --quiet --upgrade pip
 ok "environment ready"
 
-say "3/5 · Installing ci-bootstrap and its dependencies"
+say "3/5 · Installing cicd-bootstrap and its dependencies"
 ./.venv/bin/python -m pip install --quiet -e .
 ok "installed"
 
@@ -56,7 +56,7 @@ fi
 say "5/5 · Checking your keys"
 ./.venv/bin/python - <<'PY'
 import os
-from ci_bootstrap.config import load_dotenv, sonar_org, sonar_token
+from cicd_bootstrap.config import load_dotenv, sonar_org, sonar_token
 load_dotenv()
 def show(name, val):
     mark = "set" if val else "MISSING  <-- add it to .env"
@@ -71,6 +71,6 @@ cat <<'EOF'
   1. If any key shows MISSING above, open .env and paste it in.
         (SETUP.md explains exactly how to get each key.)
   2. Sign in to GitHub:     gh auth login
-  3. Start the service:     ./.venv/bin/python -m ci_bootstrap.cli --serve
+  3. Start the service:     ./.venv/bin/python -m cicd_bootstrap.cli --serve
   4. Open in your browser:  http://127.0.0.1:8000/
 EOF

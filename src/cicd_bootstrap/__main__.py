@@ -1,4 +1,4 @@
-"""Enable `python -m ci_bootstrap ...`."""
+"""Enable `python -m cicd_bootstrap ...`."""
 
 from __future__ import annotations
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ci_bootstrap.ingest import IngestError, parse_repo_url
+from cicd_bootstrap.ingest import IngestError, parse_repo_url
 
 
 @pytest.mark.parametrize(

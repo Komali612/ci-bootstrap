@@ -21,7 +21,7 @@ same every time:
 repo_url → clone → classify (language + build system) → pick cookbook → render ci.yml → open PR → PR number
 ```
 
-This skill is the "do it by hand" counterpart to the ci-bootstrap **service**.
+This skill is the "do it by hand" counterpart to the cicd-bootstrap **service**.
 The service is a Python program that calls the Anthropic API to classify and
 then renders YAML from code. Here **you are the classifier** — you read the
 repo's manifests and decide — and the cookbooks are reference files you render
@@ -46,7 +46,7 @@ A cookbook only supplies the *language-specific fill-ins* (toolchain setup,
 build/test commands, a Sonar strategy, a default Dockerfile); it can never add,
 drop, or reorder phases. Those fill-ins live as data in
 [references/cookbooks.yaml](references/cookbooks.yaml) — the **same file the
-ci-bootstrap service reads**, so the skill and the service can't drift.
+cicd-bootstrap service reads**, so the skill and the service can't drift.
 
 **If there is no cookbook for the repo's build system, stop and report an
 error.** Do not improvise a workflow or write YAML from scratch — an honest
@@ -118,7 +118,7 @@ the three placeholders:
 - `__DEFAULT_BRANCH__` → the default branch from step 1.
 
 Write the result to `.github/workflows/ci.yml` in the clone. **If that file
-already exists, do not overwrite it** — write `.github/workflows/ci-bootstrap.yml`
+already exists, do not overwrite it** — write `.github/workflows/cicd-bootstrap.yml`
 instead and mention this to the user.
 
 Then validate it — this is the safety net that keeps your assembly honest:
@@ -148,13 +148,13 @@ does not fork.
 
 ```bash
 cd <scratch>/repo
-git checkout -b ci-bootstrap/add-ci
+git checkout -b cicd-bootstrap/add-ci
 git add .github/workflows/ci.yml
-git -c user.name="ci-bootstrap" -c user.email="ci-bootstrap@users.noreply.github.com" \
+git -c user.name="cicd-bootstrap" -c user.email="cicd-bootstrap@users.noreply.github.com" \
     commit -m "ci: add four-phase CI workflow (via bootstrap-ci)"
-git push -u origin ci-bootstrap/add-ci
+git push -u origin cicd-bootstrap/add-ci
 gh pr create \
-  --base "<default_branch>" --head "ci-bootstrap/add-ci" \
+  --base "<default_branch>" --head "cicd-bootstrap/add-ci" \
   --title "ci: add CI workflow (via bootstrap-ci)" \
   --body "Adds a four-phase CI workflow (build → test → sonar → push), generated from the **<build_system>** cookbook after classifying this repo as **<language>**. Sonar is skipped until a SONAR_TOKEN secret is set; the image push runs only on merges to <default_branch>. Review before merging."
 ```
@@ -174,7 +174,7 @@ This is the whole point of the cookbook design — it should be a one-block chan
    `generic`), and a `dockerfile`. Only add a `sonar_strategies:` entry if none
    of the three existing scanners fit — which is rare.
 2. Keep the same file in sync with the service's copy at
-   `src/ci_bootstrap/cookbooks/cookbooks.yaml` (a test asserts they match).
+   `src/cicd_bootstrap/cookbooks/cookbooks.yaml` (a test asserts they match).
 
 Nothing else changes — not this SKILL.md, not the skeleton. If you find yourself
 editing the *workflow* to support a new language, something has gone wrong: the

@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ci-bootstrap"
+name = "cicd-bootstrap"
 version = "0.1.0"
 description = "A service that bootstraps CI into a repo: classify the language with an LLM, generate a 4-phase CI workflow from deterministic cookbooks, and open a pull request."
 requires-python = ">=3.10"
@@ -21,13 +21,13 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-ci-bootstrap = "ci_bootstrap.cli:main"
+cicd-bootstrap = "cicd_bootstrap.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-ci_bootstrap = ["cookbooks/cookbooks.yaml"]  # ship the shared cookbook data
+cicd_bootstrap = ["cookbooks/cookbooks.yaml"]  # ship the shared cookbook data
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

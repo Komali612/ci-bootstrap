@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from ci_bootstrap import sonar
+from cicd_bootstrap import sonar
 
 
 class _Resp:

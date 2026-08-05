@@ -14,10 +14,10 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from ci_bootstrap import author, cookbooks
-from ci_bootstrap.cookbooks.base import PUSH_GUARD, SONAR_GUARD, Cookbook, phase_labels
-from ci_bootstrap.contracts import Classification, RepoSnapshot
-from ci_bootstrap.generate import UnsupportedError, generate
+from cicd_bootstrap import author, cookbooks
+from cicd_bootstrap.cookbooks.base import PUSH_GUARD, SONAR_GUARD, Cookbook, phase_labels
+from cicd_bootstrap.contracts import Classification, RepoSnapshot
+from cicd_bootstrap.generate import UnsupportedError, generate
 
 
 def _snap(*paths: str, name: str = "demo") -> RepoSnapshot:

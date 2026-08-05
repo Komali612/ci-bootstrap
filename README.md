@@ -1,4 +1,4 @@
-# ci-bootstrap
+# cicd-bootstrap
 
 A service that **adds CI to a repository**. Give it a GitHub repo URL and it:
 
@@ -51,7 +51,7 @@ the service (env or the gitignored `.env`) so developers do nothing per repo:
 
 ## Adding support for a new language / build system
 
-Add one entry under `cookbooks:` in `src/ci_bootstrap/cookbooks/cookbooks.yaml`:
+Add one entry under `cookbooks:` in `src/cicd_bootstrap/cookbooks/cookbooks.yaml`:
 
 ```yaml
   npm:
@@ -82,7 +82,7 @@ workflow YAML. It's off by default because it turns an honest "unsupported" into
 a best-effort guess that should be reviewed.
 
 - **UI:** tick *"LLM fallback for unsupported languages"* before Run.
-- **CLI:** `ci-bootstrap <url> --llm-fallback`
+- **CLI:** `cicd-bootstrap <url> --llm-fallback`
 - **API:** `POST /bootstrap {"repo_url": "...", "allow_llm_fallback": true}`
 
 The result is flagged `llm_authored: true` and the PR/UI shows a review warning.
@@ -92,7 +92,7 @@ Needs `ANTHROPIC_API_KEY`.
 
 Every bootstrap appends one event (classification method/confidence, tokens,
 cookbook vs `llm_authored`, status, PR number, `sonar_secret_set`, duration) to a
-local JSONL file — `~/.ci-bootstrap/events.jsonl` by default (override with
+local JSONL file — `~/.cicd-bootstrap/events.jsonl` by default (override with
 `CI_BOOTSTRAP_DATA_DIR`). Recording is best-effort and never fails a bootstrap.
 
 The service exposes it two ways:
@@ -122,14 +122,14 @@ GH_TOKEN=ghp_...
 Run the service (the primary interface) and open http://127.0.0.1:8000/:
 
 ```bash
-ci-bootstrap --serve
+cicd-bootstrap --serve
 ```
 
 Or use the CLI:
 
 ```bash
-ci-bootstrap https://github.com/owner/repo            # classify, generate, open PR
-ci-bootstrap https://github.com/owner/repo --no-pr    # generate only, print the YAML
+cicd-bootstrap https://github.com/owner/repo            # classify, generate, open PR
+cicd-bootstrap https://github.com/owner/repo --no-pr    # generate only, print the YAML
 ```
 
 ## Tests

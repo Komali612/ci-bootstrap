@@ -2,7 +2,7 @@
 aggregate it for the dashboard.
 
 Local + single-user, so the store is deliberately boring: an append-only
-`events.jsonl` under a data dir (``~/.ci-bootstrap`` by default, override with
+`events.jsonl` under a data dir (``~/.cicd-bootstrap`` by default, override with
 ``CI_BOOTSTRAP_DATA_DIR``). Persisting to disk -- not in-memory counters -- is
 the one thing that matters here, because the service process is ephemeral: it
 restarts, and anything held in memory would vanish with it.
@@ -29,7 +29,7 @@ AUTHOR_RATE_IN, AUTHOR_RATE_OUT = 15.0, 75.0         # $/Mtok (Opus-class)
 
 
 def data_dir() -> Path:
-    base = Path(os.environ.get("CI_BOOTSTRAP_DATA_DIR") or (Path.home() / ".ci-bootstrap"))
+    base = Path(os.environ.get("CI_BOOTSTRAP_DATA_DIR") or (Path.home() / ".cicd-bootstrap"))
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -54,7 +54,9 @@ def _event(result: BootstrapResult, duration_ms: int) -> dict:
         "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "repo": _short_repo(result.repo_url),
         "repo_url": result.repo_url,
+        "kind": getattr(result, "kind", "ci"),   # "ci" | "cd"
         "status": result.status,
+        "cd_gate": getattr(result, "cd_gate", None),  # CD only: "automatic …" | "manual …"
         "language": getattr(c, "language", None),
         "build_system": getattr(c, "build_system", None),
         "classify_method": getattr(c, "method", None),
@@ -75,6 +77,23 @@ def _event(result: BootstrapResult, duration_ms: int) -> dict:
 def _short_repo(url: str) -> str:
     m = re.search(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?$", url.strip())
     return f"{m.group(1)}/{m.group(2)}" if m else url
+
+
+def _kind(e: dict) -> str:
+    """CI vs CD for a stored event. Back-fills events written before the `kind`
+    field existed by recognising the CD generator's cookbook."""
+    k = e.get("kind")
+    if k in ("ci", "cd"):
+        return k
+    return "cd" if e.get("cookbook") == "local-docker" else "ci"
+
+
+def _cd_gate_label(e: dict) -> str:
+    """Normalise a CD run's approval mode to 'automatic' | 'manual'."""
+    g = (e.get("cd_gate") or "").lower()
+    if not g:
+        return "manual"  # our default when unspecified is the approval gate
+    return "automatic" if "auto" in g else "manual"
 
 
 # --- reading + aggregation ----------------------------------------------
@@ -101,18 +120,35 @@ def summary() -> dict:
 
 def aggregate(events: list[dict]) -> dict:
     n = len(events)
+    ci_events = [e for e in events if _kind(e) == "ci"]
+    cd_events = [e for e in events if _kind(e) == "cd"]
+
     opened = sum(1 for e in events if e.get("status") == "opened")
     generated = sum(1 for e in events if e.get("status") == "generated")
     errors = sum(1 for e in events if e.get("status") == "error")
     prs = sum(1 for e in events if e.get("pr_number"))
     successes = opened + generated
 
-    llm_cls = sum(1 for e in events if e.get("classify_method") == "llm")
-    classified = sum(1 for e in events if e.get("classify_method"))
-    authored = sum(1 for e in events if e.get("llm_authored"))
-    generated_wf = sum(1 for e in events if e.get("cookbook"))  # produced a workflow
+    # CI-specific rates are computed over CI runs only, so CD runs don't skew them.
+    llm_cls = sum(1 for e in ci_events if e.get("classify_method") == "llm")
+    classified = sum(1 for e in ci_events if e.get("classify_method"))
+    authored = sum(1 for e in ci_events if e.get("llm_authored"))
+    generated_wf = sum(1 for e in ci_events if e.get("cookbook"))  # CI workflows produced
     sonar_attempts = [e for e in events if e.get("sonar_secret_set") is not None]
     sonar_ok = sum(1 for e in sonar_attempts if e.get("sonar_secret_set"))
+
+    # CD-specific rollup.
+    cd_success = sum(1 for e in cd_events if e.get("status") in ("opened", "generated"))
+    cd = {
+        "runs": len(cd_events),
+        "prs_opened": sum(1 for e in cd_events if e.get("pr_number")),
+        "success_rate": _pct(cd_success, len(cd_events)),
+    }
+    by_kind = [d for d in (
+        {"key": "ci", "count": len(ci_events)},
+        {"key": "cd", "count": len(cd_events)},
+    ) if d["count"]]
+    by_cd_gate = _count_by([{"gate": _cd_gate_label(e)} for e in cd_events], "gate")
 
     tok = {
         "classify_in": _sum(events, "classify_input_tokens"),
@@ -133,6 +169,8 @@ def aggregate(events: list[dict]) -> dict:
     return {
         "totals": {
             "runs": n,
+            "ci_runs": len(ci_events),
+            "cd_runs": len(cd_events),
             "unique_repos": len({e.get("repo") for e in events if e.get("repo")}),
             "opened": opened,
             "generated": generated,
@@ -145,6 +183,9 @@ def aggregate(events: list[dict]) -> dict:
             "fallback_rate": _pct(authored, generated_wf),
             "sonar_set_rate": _pct(sonar_ok, len(sonar_attempts)),
         },
+        "cd": cd,
+        "by_kind": by_kind,
+        "by_cd_gate": by_cd_gate,
         "tokens": tok,
         "cost_estimate_usd": round(cost, 4),
         "latency_ms": {
@@ -204,6 +245,8 @@ def _recent(events: list[dict], limit: int) -> list[dict]:
     rows = []
     for e in reversed(events[-limit:]):
         row = {k: e.get(k) for k in keep}
+        row["kind"] = _kind(e)
+        row["cd_gate"] = e.get("cd_gate")
         row["tokens"] = (
             (e.get("classify_input_tokens") or 0) + (e.get("classify_output_tokens") or 0)
             + (e.get("author_input_tokens") or 0) + (e.get("author_output_tokens") or 0)

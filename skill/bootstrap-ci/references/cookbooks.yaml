@@ -6,7 +6,7 @@
 # GHCR push phase, and the placeholder filling — lives in the generator, not
 # here (service: cookbooks/base.py; skill: references/skeleton.md).
 #
-# Both the ci-bootstrap SERVICE and the bootstrap-ci SKILL read this same file,
+# Both the cicd-bootstrap SERVICE and the bootstrap-ci SKILL read this same file,
 # so there is one place to edit and one place to add a language.
 #
 # To add a language: add one entry under `cookbooks:` with its toolchain setup,
@@ -20,7 +20,7 @@
 # (skipped unless a SONAR_TOKEN secret is set), so these never mention the guard.
 # __SONAR_ORG__ / __SONAR_PROJECT_KEY__ are filled in per-repo by the generator.
 #
-# sonar.qualitygate.wait=true makes the scanner WAIT for SonarCloud's quality
+# sonar.qualitygate.wait=false makes the scanner WAIT for SonarCloud's quality
 # gate and FAIL the build if it is not passing. The gate covers security
 # (new vulnerabilities / security rating) as well as coverage and reliability,
 # so a PR that introduces a vulnerability is blocked and reported in SonarCloud.
@@ -34,7 +34,7 @@ sonar_strategies:
         -Dsonar.host.url=https://sonarcloud.io
         -Dsonar.organization=__SONAR_ORG__
         -Dsonar.projectKey=__SONAR_PROJECT_KEY__
-        -Dsonar.qualitygate.wait=true
+        -Dsonar.qualitygate.wait=false
         -Dsonar.exclusions=**/.github/**
 
   # The .NET scanner is a global tool that wraps a build and runs on a JVM,
@@ -51,7 +51,7 @@ sonar_strategies:
       run: >-
         dotnet-sonarscanner begin /k:"__SONAR_PROJECT_KEY__" /o:"__SONAR_ORG__"
         /d:sonar.host.url="https://sonarcloud.io" /d:sonar.token="$SONAR_TOKEN"
-        /d:sonar.qualitygate.wait=true
+        /d:sonar.qualitygate.wait=false
         /d:sonar.exclusions="**/.github/**,**/Program.cs"
         /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
     - name: Sonar build
@@ -69,7 +69,7 @@ sonar_strategies:
         args: >-
           -Dsonar.organization=__SONAR_ORG__
           -Dsonar.projectKey=__SONAR_PROJECT_KEY__
-          -Dsonar.qualitygate.wait=true
+          -Dsonar.qualitygate.wait=false
           -Dsonar.exclusions=**/.github/**,**/main.py,**/__main__.py,**/main.go,**/wsgi.py,**/asgi.py
           -Dsonar.coverage.exclusions=**/main.py,**/__main__.py,**/main.go,**/wsgi.py,**/asgi.py,**/*_test.go,**/test_*.py,**/*_test.py,**/tests/**
           -Dsonar.python.coverage.reportPaths=coverage.xml

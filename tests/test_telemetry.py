@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from ci_bootstrap import telemetry
-from ci_bootstrap.contracts import BootstrapResult, Classification, GeneratedWorkflow
-from ci_bootstrap.service import app
+from cicd_bootstrap import telemetry
+from cicd_bootstrap.contracts import BootstrapResult, Classification, GeneratedWorkflow
+from cicd_bootstrap.service import app
 
 
 def _result(status="opened", method="llm", build="maven", llm_authored=False, pr=7, sonar=True):
@@ -74,6 +74,50 @@ def test_aggregate_empty_is_safe():
     assert agg["latency_ms"]["p95"] == 0
 
 
+def _cd_result(status="opened", gate="manual approval (production environment)", pr=8):
+    return BootstrapResult(
+        repo_url="https://github.com/acme/widget.git",
+        status=status, kind="cd", cd_gate=gate,
+        workflow=GeneratedWorkflow(
+            path=".github/workflows/cd.yml", content="name: CD", cookbook="local-docker",
+            phases=["pull", "deploy", "health-check", "rollback"],
+        ),
+        pr_number=pr, message="ok",
+    )
+
+
+def test_cd_telemetry_is_tracked_separately():
+    events = [
+        telemetry._event(_result(status="opened", build="maven"), 1000),                 # CI
+        telemetry._event(_result(status="opened", build="go", llm_authored=True), 1200),  # CI (fallback)
+        telemetry._event(_cd_result(gate="manual approval"), 500),                        # CD manual
+        telemetry._event(_cd_result(gate="automatic (no gate)"), 400),                    # CD auto
+    ]
+    agg = telemetry.aggregate(events)
+    assert agg["totals"]["runs"] == 4
+    assert agg["totals"]["ci_runs"] == 2 and agg["totals"]["cd_runs"] == 2
+    assert agg["cd"]["runs"] == 2 and agg["cd"]["prs_opened"] == 2
+    assert agg["cd"]["success_rate"] == 100.0
+    assert {d["key"]: d["count"] for d in agg["by_kind"]} == {"ci": 2, "cd": 2}
+    assert {d["key"]: d["count"] for d in agg["by_cd_gate"]} == {"manual": 1, "automatic": 1}
+    # CD's "local-docker" cookbook must NOT dilute the CI-only fallback rate:
+    assert agg["rates"]["fallback_rate"] == 50.0            # 1 of 2 CI workflows llm-authored
+    # CD runs carry no language/build system, so they don't pollute those charts.
+    assert {d["key"] for d in agg["by_build_system"]} == {"maven", "go"}
+
+
+def test_cd_event_records_kind_and_gate():
+    e = telemetry._event(_cd_result(gate="manual approval (production environment)"), 100)
+    assert e["kind"] == "cd" and "manual" in e["cd_gate"]
+
+
+def test_old_cd_event_backfilled_by_cookbook():
+    # An event written before the `kind` field existed is recognised as CD by cookbook.
+    old = {"status": "opened", "cookbook": "local-docker", "pr_number": 3}
+    assert telemetry._kind(old) == "cd"
+    assert telemetry.aggregate([old])["totals"]["cd_runs"] == 1
+
+
 def test_endpoints(tmp_path, monkeypatch):
     monkeypatch.setenv("CI_BOOTSTRAP_DATA_DIR", str(tmp_path))
     telemetry.record(_result(), 1500)
@@ -81,4 +125,4 @@ def test_endpoints(tmp_path, monkeypatch):
     data = c.get("/telemetry/data").json()
     assert data["totals"]["runs"] == 1
     html = c.get("/dashboard").text
-    assert "ci-bootstrap telemetry" in html and "/telemetry/data" in html
+    assert "cicd-bootstrap telemetry" in html and "/telemetry/data" in html
