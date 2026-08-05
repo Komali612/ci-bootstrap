@@ -24,7 +24,10 @@ The approval model is a single toggle:
 
 from __future__ import annotations
 
+import os
 import re
+
+from pydantic import BaseModel
 
 from .contracts import GeneratedWorkflow, RepoSnapshot
 from .cookbooks import dump_workflow
@@ -48,17 +51,73 @@ CD_PHASES = ["pull", "deploy", "health-check", "rollback"]
 _EXPOSE_RE = re.compile(r"(?mi)^\s*EXPOSE\s+(\d{2,5})")
 
 
-def detect_port(snapshot: RepoSnapshot) -> int:
+class _DetectedRun(BaseModel):
+    """LLM-inferred run details for a container whose Dockerfile doesn't say the port."""
+
+    port: int
+    reasoning: str = ""
+
+
+_PORT_SYSTEM = (
+    "You are a deployment engineer. Given a container repository's Dockerfile, README, "
+    "and file tree, determine the single TCP port the application listens on when the "
+    "built image runs. Prefer an explicit signal (EXPOSE, a PORT / ASPNETCORE_HTTP_PORTS "
+    "env var, server config, or code that binds a port). If the app has a well-known "
+    "default port when unset, use that. If you truly cannot tell, use 8080. Return the port."
+)
+
+
+def _detect_port_llm(snapshot: RepoSnapshot) -> int | None:
+    """Ask the LLM which port the container listens on (from the Dockerfile/README/tree).
+
+    Returns None when unavailable (no ANTHROPIC_API_KEY or an API error) so callers fall
+    back to the default -- CD must never break just because the LLM assist is off/failing.
+    """
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic().with_options(timeout=60.0, max_retries=1)
+        manifests = "\n".join(f"\n## {p}\n```\n{c}\n```" for p, c in snapshot.manifests.items())
+        user = (
+            f"Repository: {snapshot.owner}/{snapshot.name}\n\n"
+            "# File tree\n" + "\n".join(snapshot.tree) + "\n\n"
+            "# Manifest files (Dockerfile, README, configs)\n" + (manifests or "(none)")
+        )
+        resp = client.messages.parse(
+            model=os.environ.get("AUTHORING_MODEL", "claude-opus-4-8"),
+            max_tokens=512,
+            system=_PORT_SYSTEM,
+            messages=[{"role": "user", "content": user}],
+            output_format=_DetectedRun,
+        )
+        parsed = resp.parsed_output
+        if parsed and 1 <= parsed.port <= 65535:
+            print(f"[deploy] LLM inferred port {parsed.port}: {parsed.reasoning[:120]}")
+            return parsed.port
+    except Exception as exc:  # never break CD on an LLM hiccup -- fall back to the default
+        print(f"[deploy] LLM port detection unavailable: {exc}")
+    return None
+
+
+def detect_port(snapshot: RepoSnapshot, *, allow_llm_fallback: bool = False) -> int:
     """Read the app's port from a repo Dockerfile ``EXPOSE`` line, else default.
 
-    The ingest stage already reads a repo Dockerfile into ``manifests`` when one
-    exists, so we can honour a project's real port instead of assuming 8080.
+    The ingest stage already reads a repo Dockerfile into ``manifests`` when one exists,
+    so we can honour a project's real port instead of assuming 8080. When there's no
+    ``EXPOSE`` and ``allow_llm_fallback`` is set, the LLM works out the port from the
+    Dockerfile/README/source (for unusual apps) before we fall back to 8080.
     """
     for path, content in snapshot.manifests.items():
         if path.rsplit("/", 1)[-1] == "Dockerfile":
             m = _EXPOSE_RE.search(content or "")
             if m:
                 return int(m.group(1))
+    if allow_llm_fallback:
+        port = _detect_port_llm(snapshot)
+        if port:
+            return port
     return DEFAULT_PORT
 
 

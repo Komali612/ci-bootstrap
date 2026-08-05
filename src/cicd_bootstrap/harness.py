@@ -249,9 +249,10 @@ def build_pipeline(owner: str, name: str, port: int, *, auto_deploy: bool, org: 
     }
 
 
-def build_pipeline_yaml(snapshot: RepoSnapshot, *, auto_deploy: bool = True, port: int | None = None) -> str:
+def build_pipeline_yaml(snapshot: RepoSnapshot, *, auto_deploy: bool = True, port: int | None = None,
+                        allow_llm_fallback: bool = False) -> str:
     cfg = HarnessConfig()
-    port = port or detect_port(snapshot)
+    port = port or detect_port(snapshot, allow_llm_fallback=allow_llm_fallback)
     pipe = build_pipeline(
         snapshot.owner, snapshot.name, port,
         auto_deploy=auto_deploy, org=cfg.org, project=cfg.project,
@@ -437,6 +438,7 @@ def create_pipeline_remote(
 def store_pipeline_in_repo(
     snapshot: RepoSnapshot, github_token: str, *,
     auto_deploy: bool = True, branch: str | None = None, cfg: HarnessConfig | None = None,
+    allow_llm_fallback: bool = False,
 ) -> str:
     """One call: ensure the token secret + GitHub connector, then create the deploy
     pipeline as a Git-stored file in the repo (Harness commits ``.harness/deploy.yaml``).
@@ -445,7 +447,7 @@ def store_pipeline_in_repo(
     branch = branch or snapshot.default_branch
     token_ref = ensure_secret_text(TOKEN_SECRET_NAME, github_token, cfg)
     connector = ensure_github_connector(snapshot.owner, cfg, token_ref=token_ref, validation_repo=snapshot.name)
-    pipeline_yaml = build_pipeline_yaml(snapshot, auto_deploy=auto_deploy)
+    pipeline_yaml = build_pipeline_yaml(snapshot, auto_deploy=auto_deploy, allow_llm_fallback=allow_llm_fallback)
     pid = identifier(f"deploy_{snapshot.name}")
     return create_pipeline_remote(
         pipeline_yaml, pid, connector_ref=connector, repo=snapshot.name, branch=branch, cfg=cfg,
@@ -550,6 +552,7 @@ def trigger_deploy(webhook_url: str, image_tag: str) -> bool:
 def deploy_via_harness(
     snapshot: RepoSnapshot, github_token: str, *,
     auto_deploy: bool = True, branch: str | None = None, cfg: HarnessConfig | None = None,
+    allow_llm_fallback: bool = False,
 ) -> dict[str, str]:
     """Full Harness CD provisioning for a repo: secret + GitHub connector + the
     Git-stored deploy pipeline + the CI-notify webhook trigger. Returns
@@ -557,6 +560,7 @@ def deploy_via_harness(
     opens a PR adding the notify workflow (see core.add_cd_harness)."""
     cfg = (cfg or HarnessConfig()).require()
     branch = branch or snapshot.default_branch
-    pid = store_pipeline_in_repo(snapshot, github_token, auto_deploy=auto_deploy, branch=branch, cfg=cfg)
+    pid = store_pipeline_in_repo(snapshot, github_token, auto_deploy=auto_deploy, branch=branch, cfg=cfg,
+                                 allow_llm_fallback=allow_llm_fallback)
     webhook_url = ensure_webhook_trigger(pid, cfg, branch=branch)
     return {"pipeline_id": pid, "webhook_url": webhook_url}
