@@ -2,7 +2,7 @@
 
 Looked for in the current directory and this repo's root. Real environment
 variables always win over the file, so you can still override per-invocation
-with `ANTHROPIC_API_KEY=... ci-bootstrap ...`.
+with `ANTHROPIC_API_KEY=... cicd-bootstrap ...`.
 
 Set once in a gitignored `.env` at the repo root:
 
@@ -19,7 +19,7 @@ from pathlib import Path
 
 
 def _candidate_paths() -> list[Path]:
-    # config.py -> ci_bootstrap -> src -> <repo root>
+    # config.py -> cicd_bootstrap -> src -> <repo root>
     repo_root = Path(__file__).resolve().parents[2]
     return [Path.cwd() / ".env", repo_root / ".env"]
 

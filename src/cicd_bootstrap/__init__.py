@@ -1,4 +1,4 @@
-"""ci-bootstrap: a service that adds CI to a repository.
+"""cicd-bootstrap: a service that adds CI to a repository.
 
 Give it a GitHub repo URL and it:
   1. checks out the repo,

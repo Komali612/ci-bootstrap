@@ -9,11 +9,11 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from ci_bootstrap import cookbooks
-from ci_bootstrap.classify import classify_with_heuristic
-from ci_bootstrap.contracts import Classification, RepoSnapshot
-from ci_bootstrap.cookbooks.base import PUSH_GUARD, SONAR_GUARD, phase_labels
-from ci_bootstrap.generate import UnsupportedError, generate
+from cicd_bootstrap import cookbooks
+from cicd_bootstrap.classify import classify_with_heuristic
+from cicd_bootstrap.contracts import Classification, RepoSnapshot
+from cicd_bootstrap.cookbooks.base import PUSH_GUARD, SONAR_GUARD, phase_labels
+from cicd_bootstrap.generate import UnsupportedError, generate
 
 
 def _snap(*paths: str, name: str = "demo", branch: str = "main") -> RepoSnapshot:
@@ -74,7 +74,7 @@ def test_sonar_and_push_are_guarded(build_system):
 
 
 def test_push_guard_runs_on_merge_and_manual_but_not_pr():
-    from ci_bootstrap.cookbooks.base import PUSH_GUARD
+    from cicd_bootstrap.cookbooks.base import PUSH_GUARD
     # Publishing should happen on a push to default AND on a manual run, but a
     # plain pull_request must never publish an image.
     assert "github.event_name == 'push'" in PUSH_GUARD

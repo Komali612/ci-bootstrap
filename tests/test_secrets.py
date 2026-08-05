@@ -11,9 +11,9 @@ import base64
 
 from nacl import encoding, public
 
-from ci_bootstrap.contracts import Classification, RepoSnapshot
-from ci_bootstrap.generate import generate
-from ci_bootstrap.github import _seal
+from cicd_bootstrap.contracts import Classification, RepoSnapshot
+from cicd_bootstrap.generate import generate
+from cicd_bootstrap.github import _seal
 
 
 def _snap(name="demo", owner="acme"):

@@ -75,7 +75,7 @@ class GeneratedWorkflow(BaseModel):
     """The CI workflow a cookbook produced. The skeleton is deterministic even
     when the cookbook's fill-ins came from the LLM fallback."""
 
-    path: str  # e.g. ".github/workflows/ci.yml"
+    path: str  # e.g. ".github/workflows/app-ci.yml"
     content: str
     cookbook: str  # which cookbook produced it, e.g. "maven"
     phases: list[str] = ["build", "test", "sonar", "push"]  # always all four
@@ -89,6 +89,7 @@ class BootstrapResult(BaseModel):
 
     repo_url: str
     status: str  # "opened" | "generated" | "error"
+    kind: str = "ci"  # "ci" (bootstrap) | "cd" (add_cd) — which pipeline this run produced
     classification: Classification | None = None
     workflow: GeneratedWorkflow | None = None
     branch: str | None = None
@@ -96,4 +97,17 @@ class BootstrapResult(BaseModel):
     pr_url: str | None = None
     sonar_secret_set: bool | None = None  # True/False if we tried to write SONAR_TOKEN; None if not configured
     sonar_project: str | None = None       # "created" | "exists" | "error" | None (SonarCloud project provisioning)
+    cd_gate: str | None = None             # CD only: how production is gated ("automatic" | "manual approval ...")
+    merged: bool = False                   # True if we auto-merged the PR we opened
+    merge_sha: str | None = None           # the resulting commit SHA on the base branch, when merged
+    message: str = ""
+
+
+class ChainResult(BaseModel):
+    """The full CI -> image -> CD chain, driven from one 'Run CI agent' click."""
+
+    repo_url: str
+    ci: BootstrapResult                    # the CI run (its .merged/.merge_sha say if/where it merged)
+    image_ready: bool = False              # True once CI succeeded on main and pushed an image
+    cd: BootstrapResult | None = None      # the CD run (None if we stopped before it)
     message: str = ""

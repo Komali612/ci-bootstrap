@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .base import (
     Cookbook,
+    dump_workflow,
     get,
     load,
     register,
@@ -19,6 +20,6 @@ from .base import (
 )
 
 __all__ = [
-    "Cookbook", "get", "load", "register", "render_workflow",
+    "Cookbook", "dump_workflow", "get", "load", "register", "render_workflow",
     "sonar_strategy", "strategy_names", "supported",
 ]

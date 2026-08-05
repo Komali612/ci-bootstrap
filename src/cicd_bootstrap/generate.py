@@ -15,7 +15,7 @@ from __future__ import annotations
 from . import cookbooks
 from .contracts import Classification, GeneratedWorkflow, RepoSnapshot
 
-WORKFLOW_PATH = ".github/workflows/ci.yml"
+WORKFLOW_PATH = ".github/workflows/app-ci.yml"
 
 
 class UnsupportedError(Exception):

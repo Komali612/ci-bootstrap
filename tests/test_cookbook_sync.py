@@ -17,10 +17,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ci_bootstrap import cookbooks
-from ci_bootstrap.cookbooks.base import DATA_PATH, PUSH_GUARD, SONAR_GUARD, phase_labels
-from ci_bootstrap.contracts import Classification, RepoSnapshot
-from ci_bootstrap.generate import generate
+from cicd_bootstrap import cookbooks
+from cicd_bootstrap.cookbooks.base import DATA_PATH, PUSH_GUARD, SONAR_GUARD, phase_labels
+from cicd_bootstrap.contracts import Classification, RepoSnapshot
+from cicd_bootstrap.generate import generate
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_COOKBOOKS = REPO_ROOT / "skill" / "bootstrap-ci" / "references" / "cookbooks.yaml"

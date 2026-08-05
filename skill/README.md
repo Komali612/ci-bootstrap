@@ -1,9 +1,9 @@
 # `bootstrap-ci` — the skill (a second way to do the same thing)
 
 This folder is a **Claude Code skill** that performs the same job as the
-`ci-bootstrap` service in the repo root, by a different mechanism.
+`cicd-bootstrap` service in the repo root, by a different mechanism.
 
-| | The service (`src/ci_bootstrap/`) | The skill (`bootstrap-ci/`) |
+| | The service (`src/cicd_bootstrap/`) | The skill (`bootstrap-ci/`) |
 |---|---|---|
 | What runs it | A Python program (FastAPI / CLI) | Claude Code, following `SKILL.md` |
 | Who classifies | An **Anthropic API call** (Haiku, structured output) | **Claude itself** reads the manifests and decides |
@@ -19,7 +19,7 @@ system that has no cookbook.
 
 The per-language content lives once in **`cookbooks.yaml`** (setup, build/test
 commands, Sonar strategy, Dockerfile). The service reads its copy at
-`src/ci_bootstrap/cookbooks/cookbooks.yaml`; the skill reads the copy under
+`src/cicd_bootstrap/cookbooks/cookbooks.yaml`; the skill reads the copy under
 `references/`. A test in the service repo asserts the two are identical, so they
 can't drift. The fixed scaffolding (header, guards, push phase) lives in the
 *generator* — `base.py` for the service, `references/skeleton.md` for the skill.

@@ -4,7 +4,7 @@
     GET  /health    liveness probe
     POST /bootstrap {"repo_url": "...", "open_pr": true} -> BootstrapResult
 
-Run with:  uvicorn ci_bootstrap.service:app   (or `ci-bootstrap --serve`)
+Run with:  uvicorn cicd_bootstrap.service:app   (or `cicd-bootstrap --serve`)
 """
 
 from __future__ import annotations
@@ -15,15 +15,36 @@ from pydantic import BaseModel
 
 from . import telemetry
 from .contracts import BootstrapResult
-from .core import bootstrap
+from .core import add_cd, bootstrap
 
-app = FastAPI(title="ci-bootstrap", version="0.1.0")
+app = FastAPI(title="cicd-bootstrap", version="0.1.0")
 
 
 class BootstrapRequest(BaseModel):
     repo_url: str
     open_pr: bool = True
     allow_llm_fallback: bool = False  # if no cookbook matches, let the LLM author one
+
+
+class CDRequest(BaseModel):
+    repo_url: str
+    open_pr: bool = True
+    auto_deploy: bool = False  # True: deploy straight to prod; False: pause for approval
+
+
+class SetupRequest(BaseModel):
+    """One request that drives BOTH agents from the unified control panel."""
+    repo_url: str
+    open_pr: bool = True
+    allow_llm_fallback: bool = False   # CI: let the LLM author a cookbook if none matches
+    auto_deploy: bool = False          # CD: deploy straight to prod vs click-to-approve
+    auto_handoff: bool = True          # CD: run right after CI vs manual run in Actions
+
+
+class SetupResult(BaseModel):
+    """Both agents' results, returned together."""
+    ci: BootstrapResult
+    cd: BootstrapResult
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -55,32 +76,61 @@ def bootstrap_endpoint(req: BootstrapRequest) -> BootstrapResult:
     return bootstrap(req.repo_url, open_pr_flag=req.open_pr, allow_llm_fallback=req.allow_llm_fallback)
 
 
+@app.post("/cd", response_model=BootstrapResult)
+def cd_endpoint(req: CDRequest) -> BootstrapResult:
+    # Same contract as /bootstrap, but generates a CD (deploy) workflow: pull the
+    # CI-built image and run it on the self-hosted runner, with health check and
+    # rollback. auto_deploy=False adds a click-to-approve gate.
+    return add_cd(req.repo_url, open_pr_flag=req.open_pr, auto_deploy=req.auto_deploy)
+
+
+@app.post("/setup", response_model=SetupResult)
+def setup_endpoint(req: SetupRequest) -> SetupResult:
+    """The unified control panel: give a repo once, set up BOTH pipelines.
+
+    Runs the CI agent (build pipeline) then the CD agent (deploy pipeline). The
+    two agents are unchanged underneath; this just drives them from one request.
+    """
+    ci = bootstrap(req.repo_url, open_pr_flag=req.open_pr, allow_llm_fallback=req.allow_llm_fallback)
+    cd = add_cd(
+        req.repo_url, open_pr_flag=req.open_pr,
+        auto_deploy=req.auto_deploy, auto_handoff=req.auto_handoff,
+    )
+    return SetupResult(ci=ci, cd=cd)
+
+
 INDEX_HTML = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>ci-bootstrap</title>
+<title>cicd-bootstrap · CI + CD</title>
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
+         max-width: 860px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
   h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+  h3.sec { font-size: 1rem; margin: 22px 0 2px; }
   p.sub { color: #6b7280; margin-top: 0; }
-  form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 24px 0 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 22px 0 8px; }
   input[type=url] { flex: 1 1 340px; padding: 10px 12px; font-size: 1rem;
                     border: 1px solid #9ca3af; border-radius: 8px; }
-  button { padding: 10px 18px; font-size: 1rem; font-weight: 600; border: 0; border-radius: 8px;
+  button { padding: 10px 16px; font-size: 1rem; font-weight: 600; border: 0; border-radius: 8px;
            background: #2a78d6; color: #fff; cursor: pointer; }
+  button.step2 { background: #6b7280; }
   button:disabled { opacity: .6; cursor: progress; }
+  .opts { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 4px 0; }
+  .opts .divider { width: 1px; height: 18px; background: #d1d5db; }
+  .opts .lbl { font-size: .9rem; color: #374151; font-weight: 600; }
   label.chk { font-size: .9rem; color: #6b7280; display: flex; align-items: center; gap: 6px; }
-  .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-top: 12px; }
-  .banner { padding: 12px 16px; border-radius: 10px; font-weight: 600; }
+  .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-top: 10px; }
+  .banner { padding: 12px 16px; border-radius: 10px; font-weight: 600; margin-top: 8px; }
   .ok { background: rgba(12,163,12,.12); color: #0ca30c; }
   .warn { background: rgba(42,120,214,.12); color: #2a78d6; }
   .err { background: rgba(208,59,59,.12); color: #d03b3b; }
   a { color: #2a78d6; }
+  code { background: rgba(127,127,127,.14); padding: 1px 5px; border-radius: 5px; }
   table { border-collapse: collapse; width: 100%; font-size: .92rem; }
   td { padding: 4px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
   td.k { color: #6b7280; width: 140px; }
@@ -94,63 +144,56 @@ INDEX_HTML = """<!doctype html>
 </style>
 </head>
 <body>
-  <h1>🤖 ci-bootstrap</h1>
-  <p class="sub">Give it a GitHub repo URL. It classifies the language, generates a 4-phase CI workflow from a cookbook, and opens a pull request. &nbsp;·&nbsp; <a href="/dashboard">📊 Telemetry dashboard →</a></p>
+  <h1>🤖 cicd-bootstrap</h1>
+  <p class="sub">Enter a repo <strong>once</strong>. <strong>Step 1</strong> — set up CI: it builds and pushes the image. Merge that PR and let CI run. <strong>Step 2</strong> — set up CD: it deploys that image. CD waits until an image actually exists, so the order is always CI → image → CD. &nbsp;·&nbsp; <a href="/dashboard">📊 dashboard</a></p>
 
-  <form id="f">
+  <div class="row">
     <input id="url" type="url" required placeholder="https://github.com/owner/repo" autocomplete="off"/>
-    <button id="go" type="submit">Run</button>
-    <label class="chk"><input id="pr" type="checkbox" checked/> open a pull request</label>
-    <label class="chk" title="If no built-in cookbook matches the language, ask the LLM to generate the cookbook fields (setup, build, test, sonar, Dockerfile). The 4-phase skeleton is still deterministic."><input id="llm" type="checkbox"/> LLM fallback for unsupported languages</label>
-  </form>
+    <button id="go-ci" type="button">① Set up CI</button>
+    <button id="go-cd" type="button" class="step2">② Set up CD</button>
+  </div>
+
+  <div class="opts">
+    <label class="chk"><input id="pr" type="checkbox" checked/> open pull requests</label>
+    <label class="chk" title="If no built-in cookbook matches the CI language, let the LLM author one."><input id="llm" type="checkbox"/> LLM fallback (CI)</label>
+    <span class="divider"></span>
+    <span class="lbl">CD handoff:</span>
+    <label class="chk" title="The deploy runs automatically as soon as CI finishes."><input type="radio" name="handoff" value="auto" checked/> auto — right after CI</label>
+    <label class="chk" title="The deploy runs only when you trigger it yourself from the Actions tab."><input type="radio" name="handoff" value="manual"/> manual — in GitHub Actions</label>
+    <span class="divider"></span>
+    <label class="chk" title="Checked: deploy straight to production. Unchecked: pause for your click-to-approve."><input id="auto" type="checkbox"/> deploy automatically (else: click to approve)</label>
+  </div>
 
   <div id="out"></div>
 
 <script>
-const f = document.getElementById('f');
-const out = document.getElementById('out');
-const go = document.getElementById('go');
-
-f.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const repo_url = document.getElementById('url').value.trim();
-  const open_pr = document.getElementById('pr').checked;
-  const allow_llm_fallback = document.getElementById('llm').checked;
-  go.disabled = true;
-  out.innerHTML = '<div class="card"><span class="spin"></span>Cloning, classifying, generating' + (open_pr ? ', opening PR' : '') + '\\u2026</div>';
-  try {
-    const resp = await fetch('/bootstrap', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({repo_url, open_pr, allow_llm_fallback})
-    });
-    render(await resp.json());
-  } catch (err) {
-    out.innerHTML = '<div class="banner err">Request failed: ' + esc(String(err)) + '</div>';
-  } finally {
-    go.disabled = false;
-  }
-});
-
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function row(k, v){ return '<tr><td class="k">' + k + '</td><td>' + (v==null?'':v) + '</td></tr>'; }
 
-function render(r){
+function renderOne(r, targetId){
+  const el = document.getElementById(targetId);
   let h = '';
   if (r.status === 'opened') {
-    h += '<div class="banner ok">\\u2705 Opened PR #' + r.pr_number + ' \\u2014 <a href="' + esc(r.pr_url) + '" target="_blank" rel="noopener">' + esc(r.pr_url) + '</a></div>';
+    h += '<div class="banner ok">✅ Opened PR #' + r.pr_number + ' — <a href="' + esc(r.pr_url) + '" target="_blank" rel="noopener">' + esc(r.pr_url) + '</a></div>';
   } else if (r.status === 'generated') {
-    h += '<div class="banner warn">\\u2139\\ufe0f Workflow generated (no PR opened)</div>';
+    h += '<div class="banner warn">ℹ️ Workflow generated (no PR opened)</div>';
+  } else if (r.status === 'blocked') {
+    h += '<div class="banner warn">⏳ ' + esc(r.message) + '</div>';
   } else {
-    h += '<div class="banner err">\\u274c ' + esc(r.message) + '</div>';
+    h += '<div class="banner err">❌ ' + esc(r.message) + '</div>';
   }
   if (r.sonar_project === 'created' || r.sonar_project === 'exists') {
-    h += '<div class="banner ok">\\ud83e\\udd9a SonarCloud project ' + (r.sonar_project === 'created' ? 'created (Automatic Analysis off)' : 'already set up') + '</div>';
+    h += '<div class="banner ok">🦚 SonarCloud project ' + (r.sonar_project === 'created' ? 'created (Automatic Analysis off)' : 'already set up') + '</div>';
   } else if (r.sonar_project === 'error') {
-    h += '<div class="banner warn">\\u26a0\\ufe0f Could not provision the SonarCloud project \\u2014 the first scan may need manual setup</div>';
+    h += '<div class="banner warn">⚠️ Could not provision the SonarCloud project — the first scan may need manual setup</div>';
   }
   if (r.sonar_secret_set === true) {
-    h += '<div class="banner ok">\\ud83d\\udd10 SONAR_TOKEN written to the repo\\u2019s Actions secrets</div>';
+    h += '<div class="banner ok">🔐 SONAR_TOKEN written to the repo’s Actions secrets</div>';
   } else if (r.sonar_secret_set === false) {
-    h += '<div class="banner warn">\\u26a0\\ufe0f Could not set SONAR_TOKEN (token needs admin/secrets:write) \\u2014 Sonar will stay skipped</div>';
+    h += '<div class="banner warn">⚠️ Could not set SONAR_TOKEN — Sonar will stay skipped</div>';
+  }
+  if (r.cd_gate) {
+    h += '<div class="banner warn">🚦 Approval to production: ' + esc(r.cd_gate) + '</div>';
   }
   const c = r.classification;
   if (c) {
@@ -158,22 +201,51 @@ function render(r){
       + row('language', esc(c.language)) + row('build system', esc(c.build_system))
       + row('test command', esc(c.test_command))
       + row('confidence', esc(c.confidence + ' (via ' + c.method + ')'))
-      + row('evidence', (c.evidence||[]).map(esc).join('<br>'))
       + '</table></div>';
   }
   const w = r.workflow;
   if (w) {
-    const src = w.llm_authored
-      ? ' <span class="sub">(cookbook: ' + esc(w.cookbook) + ' \\u2014 \\ud83e\\udd16 LLM-authored)</span>'
-      : ' <span class="sub">(cookbook: ' + esc(w.cookbook) + ')</span>';
-    h += '<div class="card"><strong>Generated workflow</strong> \\u2014 <code>' + esc(w.path) + '</code>' + src
+    h += '<div class="card"><strong>Generated workflow</strong> — <code>' + esc(w.path) + '</code> <span class="sub">(cookbook: ' + esc(w.cookbook) + (w.llm_authored ? ' — 🤖 LLM-authored' : '') + ')</span>'
       + '<div class="phases">' + (w.phases||[]).map(p => '<span class="phase">' + esc(p) + '</span>').join('') + '</div>'
-      + (w.llm_authored ? '<div class="banner warn" style="margin-top:10px">\\u26a0\\ufe0f No built-in cookbook for this stack \\u2014 the setup/build/test/Dockerfile were generated by the LLM. The 4-phase structure and guards are still deterministic, but review the commands before merging.</div>' : '')
       + '<pre>' + esc(w.content) + '</pre></div>';
   }
-  out.innerHTML = h;
+  el.innerHTML = h;
 }
-function row(k, v){ return '<tr><td class="k">' + k + '</td><td>' + (v==null?'':v) + '</td></tr>'; }
+
+const out = document.getElementById('out');
+const goCI = document.getElementById('go-ci');
+const goCD = document.getElementById('go-cd');
+
+async function run(kind){
+  const repo_url = document.getElementById('url').value.trim();
+  if (!repo_url) { out.innerHTML = '<div class="banner err">Enter a repo URL first.</div>'; return; }
+  const open_pr = document.getElementById('pr').checked;
+  goCI.disabled = goCD.disabled = true;
+  try {
+    let resp, label;
+    if (kind === 'ci') {
+      const allow_llm_fallback = document.getElementById('llm').checked;
+      label = '⚙️ CI pipeline — build &amp; push the image';
+      out.innerHTML = '<div class="card"><span class="spin"></span>Setting up CI' + (open_pr ? ', opening PR' : '') + '…</div>';
+      resp = await fetch('/bootstrap', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({repo_url, open_pr, allow_llm_fallback}) });
+    } else {
+      const auto_deploy = document.getElementById('auto').checked;
+      const auto_handoff = document.querySelector('input[name=handoff]:checked').value === 'auto';
+      label = '🚀 CD pipeline — deploy the image';
+      out.innerHTML = '<div class="card"><span class="spin"></span>Setting up CD' + (open_pr ? ', opening PR' : '') + '…</div>';
+      resp = await fetch('/cd', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({repo_url, open_pr, auto_deploy, auto_handoff}) });
+    }
+    const data = await resp.json();
+    out.innerHTML = '<h3 class="sec">' + label + '</h3><div id="one"></div>';
+    renderOne(data, 'one');
+  } catch (err) {
+    out.innerHTML = '<div class="banner err">Request failed: ' + esc(String(err)) + '</div>';
+  } finally {
+    goCI.disabled = goCD.disabled = false;
+  }
+}
+goCI.onclick = () => run('ci');
+goCD.onclick = () => run('cd');
 </script>
 </body>
 </html>
@@ -188,7 +260,7 @@ DASHBOARD_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>ci-bootstrap · telemetry</title>
+<title>cicd-bootstrap · telemetry</title>
 <style>
   :root{
     color-scheme: light dark;
@@ -251,7 +323,7 @@ DASHBOARD_HTML = """<!doctype html>
 <body>
 <div class="wrap">
   <header>
-    <h1>📊 ci-bootstrap telemetry</h1>
+    <h1>📊 cicd-bootstrap telemetry</h1>
     <div class="spacer"></div>
     <a href="/">← service</a>
     <button id="theme">◐ theme</button>
@@ -279,7 +351,7 @@ async function load(){
   try{
     const r = await fetch('/telemetry/data'); const d = await r.json();
     window.__data = d; render(d);
-    $('#foot').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · data at ~/.ci-bootstrap/events.jsonl';
+    $('#foot').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · data at ~/.cicd-bootstrap/events.jsonl';
   }catch(e){ $('#root').innerHTML = '<p class="empty">Could not load telemetry: '+esc(e)+'</p>'; }
 }
 
@@ -289,12 +361,13 @@ function render(d){
   const t=d.totals, r=d.rates, tok=d.tokens, lat=d.latency_ms;
   if(!t || t.runs===0){ $('#root').innerHTML='<p class="empty">No bootstrap runs recorded yet.<br>Bootstrap a repo from the <a href="/">service</a> and this fills in.</p>'; return; }
 
+  const cd = d.cd || {runs:0, prs_opened:0, success_rate:0};
   let h = '<div class="kpis">'
-    + tile(num(t.runs),'Bootstraps', t.unique_repos+' unique repos')
+    + tile(num(t.runs),'Total runs', (t.ci_runs||0)+' CI · '+(t.cd_runs||0)+' CD')
     + tile(pct(r.success_rate),'Success rate', t.errors+' errors')
     + tile(num(t.prs_opened),'PRs opened', t.generated+' generated only')
+    + tile(num(cd.runs),'CD pipelines', cd.prs_opened+' deploys opened')
     + tile(pct(r.fallback_rate),'LLM-fallback rate', pct(r.llm_classify_rate)+' LLM-classified')
-    + tile(num(tok.total),'LLM tokens', '≈ $'+(d.cost_estimate_usd||0).toFixed(2)+' est.')
     + tile(ms(lat.p95),'p95 latency', 'p50 '+ms(lat.p50))
     + '</div>';
 
@@ -307,7 +380,12 @@ function render(d){
 
   h += '<div class="grid2">'
      + card('Outcome', '<div id="c-status"></div>')
-     + card('Classification method', '<div id="c-method"></div>')
+     + card('Classification method <span class="n">· CI only</span>', '<div id="c-method"></div>')
+     + '</div>';
+
+  h += '<div class="grid2">'
+     + card('Pipeline type <span class="n">· CI vs CD</span>', '<div id="c-kind"></div>')
+     + card('CD approval mode <span class="n">· auto vs click-to-approve</span>', '<div id="c-cdgate"></div>')
      + '</div>';
 
   h += card('Recent runs <span class="n">· newest first</span>', '<div style="overflow-x:auto">'+table(d.recent)+'</div>');
@@ -318,6 +396,8 @@ function render(d){
   hbars($('#c-build'), d.by_build_system);
   segbar($('#c-status'), d.by_status, {opened:'var(--good)', generated:'var(--s1)', error:'var(--critical)'});
   segbar($('#c-method'), d.by_method, {llm:'var(--s1)', heuristic:'var(--s2)'});
+  segbar($('#c-kind'), d.by_kind, {ci:'var(--s1)', cd:'var(--s3)'});
+  segbar($('#c-cdgate'), d.by_cd_gate, {automatic:'var(--s4)', manual:'var(--s2)'});
 }
 
 function card(title, body){ return '<div class="card"><h2>'+title+'</h2>'+body+'</div>'; }
@@ -362,12 +442,13 @@ function segbar(el, data, colors){
 
 function table(rows){
   if(!rows || !rows.length) return '<p class="muted">no runs</p>';
-  let h='<table><thead><tr><th>when</th><th>repo</th><th>lang</th><th>build</th><th>method</th><th>outcome</th><th>cookbook</th><th class="num">PR</th><th>sonar</th><th class="num">tok</th><th class="num">ms</th></tr></thead><tbody>';
+  let h='<table><thead><tr><th>when</th><th>repo</th><th>type</th><th>lang</th><th>build</th><th>method</th><th>outcome</th><th>cookbook</th><th class="num">PR</th><th>sonar</th><th class="num">tok</th><th class="num">ms</th></tr></thead><tbody>';
   rows.forEach(e=>{
     const when=(e.ts||'').replace('T',' ').replace('+00:00','');
+    const kind = e.kind==='cd' ? '🚀 CD' : '⚙️ CI';
     const cook = e.llm_authored ? '🤖 '+esc(e.cookbook||'') : esc(e.cookbook||'—');
     const sonar = e.sonar_secret_set===true?'✓':(e.sonar_secret_set===false?'✕':'—');
-    h+='<tr><td>'+esc(when)+'</td><td>'+esc(e.repo||'')+'</td><td>'+esc(e.language||'—')+'</td><td>'+esc(e.build_system||'—')
+    h+='<tr><td>'+esc(when)+'</td><td>'+esc(e.repo||'')+'</td><td>'+kind+'</td><td>'+esc(e.language||'—')+'</td><td>'+esc(e.build_system||'—')
       +'</td><td>'+esc(e.classify_method||'—')+'</td><td class="st-'+esc(e.status)+'">'+esc(e.status||'')+'</td><td>'+cook
       +'</td><td class="num">'+(e.pr_number?('#'+e.pr_number):'—')+'</td><td>'+sonar+'</td><td class="num">'+num(e.tokens)+'</td><td class="num">'+num(e.duration_ms)+'</td></tr>';
   });

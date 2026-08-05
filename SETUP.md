@@ -1,4 +1,4 @@
-# Setup guide — run ci-bootstrap on your laptop
+# Setup guide — run cicd-bootstrap on your laptop
 
 This guide takes you from a fresh clone to a working tool. **No coding experience needed** —
 follow it top to bottom. Two ways to do it:
@@ -89,7 +89,7 @@ Save it, then run `bash setup.sh` again — all three keys should now show a gre
 Start the service:
 
 ```
-./.venv/bin/python -m ci_bootstrap.cli --serve
+./.venv/bin/python -m cicd_bootstrap.cli --serve
 ```
 
 When you see `Uvicorn running on http://127.0.0.1:8000`, open **<http://127.0.0.1:8000/>** in
@@ -116,7 +116,7 @@ That's a full working setup. 🎉
   once under your org and **turn off "Automatic Analysis"** (Administration → Analysis Method) so
   the pipeline's own scan is used.
 - **Port already in use** — something's already running on 8000. Stop it, or start on another
-  port: `./.venv/bin/python -m ci_bootstrap.cli --serve --port 8010`.
+  port: `./.venv/bin/python -m cicd_bootstrap.cli --serve --port 8010`.
 
 Stuck on any step? Open this folder in Claude Code and describe exactly what you see — it can pick
 up from wherever you are.
