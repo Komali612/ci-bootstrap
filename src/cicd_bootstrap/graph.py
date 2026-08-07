@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Optional, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
 
 from .contracts import BootstrapResult
@@ -115,7 +116,16 @@ def build_cicd_graph(checkpointer=None, *, interrupt_before_deploy: bool = False
     g.add_conditional_edges("ci", _after_ci, {"wait": "wait", END: END})
     g.add_conditional_edges("wait", _after_wait, {"cd": "cd", END: END})
     g.add_edge("cd", END)
+    # A checkpointer is only needed to pause and resume (the human-in-the-loop
+    # interrupt). For a plain run we skip it, which keeps the graph state out of
+    # the checkpoint serializer entirely. Pass a persistent checkpointer
+    # (SqliteSaver/Postgres) for durable, cross-restart resumes.
+    if interrupt_before_deploy and checkpointer is None:
+        # Register our result type with the checkpoint serializer so the paused
+        # state round-trips cleanly (no msgpack deprecation warning).
+        serde = JsonPlusSerializer(allowed_msgpack_modules=[("cicd_bootstrap.contracts", "BootstrapResult")])
+        checkpointer = MemorySaver(serde=serde)
     return g.compile(
-        checkpointer=checkpointer or MemorySaver(),
+        checkpointer=checkpointer,
         interrupt_before=["cd"] if interrupt_before_deploy else None,
     )
