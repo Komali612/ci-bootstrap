@@ -105,20 +105,18 @@ def _render(snapshot: RepoSnapshot, classification: Classification) -> str:
 
 
 def _call(user: str) -> tuple[LLMCookbook, dict]:
-    import anthropic
+    from .llm import LLMError, call_structured
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise AuthorError("ANTHROPIC_API_KEY is required for the LLM cookbook fallback")
-    client = anthropic.Anthropic().with_options(timeout=120.0, max_retries=1)
-    response = client.messages.parse(
-        model=os.environ.get("AUTHORING_MODEL", DEFAULT_MODEL),
-        max_tokens=2048,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user}],
-        output_format=LLMCookbook,
-    )
-    parsed = response.parsed_output
-    if parsed is None:
-        raise AuthorError("LLM returned no parseable cookbook")
-    usage = {"input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens}
-    return parsed, usage
+    try:
+        return call_structured(
+            model=os.environ.get("AUTHORING_MODEL", DEFAULT_MODEL),
+            system=SYSTEM_PROMPT,
+            user=user,
+            schema=LLMCookbook,
+            max_tokens=2048,
+            timeout=120.0,
+        )
+    except LLMError as exc:
+        raise AuthorError(str(exc)) from None

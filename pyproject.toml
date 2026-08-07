@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "A service that bootstraps CI into a repo: classify the language with an LLM, generate a 4-phase CI workflow from deterministic cookbooks, and open a pull request."
 requires-python = ">=3.10"
 dependencies = [
-    "anthropic>=0.40",   # LLM classification (structured outputs)
+    "langchain-anthropic>=1.0",  # LLM calls via LangChain (ChatAnthropic + structured output)
+    "langgraph>=1.0",            # CI->CD orchestration as a stateful graph
     "httpx>=0.27",       # GitHub REST API
     "pyyaml>=6.0",       # emit + self-validate the generated workflow
     "fastapi>=0.110",    # the service is the first-class interface
