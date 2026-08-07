@@ -71,21 +71,16 @@ def _render(snapshot: RepoSnapshot) -> str:
 
 
 def _classify_with_llm(snapshot: RepoSnapshot) -> tuple[LLMClassification, dict]:
-    import anthropic
+    from .llm import call_structured
 
-    client = anthropic.Anthropic().with_options(timeout=60.0, max_retries=1)
-    response = client.messages.parse(
+    return call_structured(
         model=os.environ.get("CLASSIFIER_MODEL", DEFAULT_MODEL),
-        max_tokens=1024,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": _render(snapshot)}],
-        output_format=LLMClassification,
+        user=_render(snapshot),
+        schema=LLMClassification,
+        max_tokens=1024,
+        timeout=60.0,
     )
-    parsed = response.parsed_output
-    if parsed is None:
-        raise ValueError("LLM returned no parseable classification")
-    usage = {"input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens}
-    return parsed, usage
 
 
 # (manifest signal, language, build_system, test_command), in priority order.

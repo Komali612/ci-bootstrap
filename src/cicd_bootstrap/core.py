@@ -350,32 +350,29 @@ def run_ci_then_cd(
     token = token or resolve_token()
     owner, name = parse_repo_url(repo_url)
 
-    # 1. CI: generate + open + auto-merge.
-    ci = bootstrap(repo_url, open_pr_flag=True, token=token,
-                   allow_llm_fallback=allow_llm_fallback, merge=True)
-    if ci.status != "opened":
-        return ChainResult(repo_url=repo_url, ci=ci, message=f"CI stopped ({ci.status}): {ci.message}")
-    if not ci.merged:
-        return ChainResult(repo_url=repo_url, ci=ci,
-                           message="CI PR opened but couldn't be auto-merged; merge it yourself, then run CD.")
+    # Orchestrated as a LangGraph StateGraph (see graph.py): ci -> wait -> cd,
+    # with conditional branching and a checkpointer. Imported lazily to avoid an
+    # import cycle. The graph nodes call bootstrap/wait_for_ci_success/
+    # add_cd_harness on this module at call time (so mocks/patches still apply).
+    import uuid
 
-    # 2. Wait for CI to finish on main and push the image.
-    image_ready = wait_for_ci_success(owner, name, ci.merge_sha or "", token, timeout_s=wait_timeout_s)
-    if not image_ready:
-        return ChainResult(
-            repo_url=repo_url, ci=ci, image_ready=False,
-            message="CI didn't finish successfully in time, so no image yet and CD was skipped. "
-                    "Check the CI run on GitHub, then run CD from the CD agent.",
-        )
+    from . import graph
 
-    # 3. CD via Harness (the image gate passes now) -- same path as the CD agent.
-    cd = add_cd_harness(repo_url, token=token, auto_deploy=auto_deploy, open_pr_flag=True)
-    if cd.status == "opened":
-        msg = ("Done — CI built the image and Harness CD is set up: the pipeline is stored in the "
-               "repo, the current image was deployed to your laptop, and future CI builds auto-deploy.")
-    else:
-        msg = f"Image is ready, but Harness CD ended as '{cd.status}': {cd.message}"
-    return ChainResult(repo_url=repo_url, ci=ci, image_ready=True, cd=cd, message=msg)
+    final = graph.build_cicd_graph().invoke(
+        {
+            "repo_url": repo_url, "token": token, "owner": owner, "name": name,
+            "allow_llm_fallback": allow_llm_fallback, "auto_deploy": auto_deploy,
+            "wait_timeout_s": wait_timeout_s, "image_ready": False,
+        },
+        config={"configurable": {"thread_id": str(uuid.uuid4())}},
+    )
+    return ChainResult(
+        repo_url=repo_url,
+        ci=final.get("ci"),
+        image_ready=bool(final.get("image_ready")),
+        cd=final.get("cd"),
+        message=final.get("message", ""),
+    )
 
 
 # --- CD via Harness --------------------------------------------------------

@@ -76,23 +76,22 @@ def _detect_port_llm(snapshot: RepoSnapshot) -> int | None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     try:
-        import anthropic
+        from .llm import call_structured
 
-        client = anthropic.Anthropic().with_options(timeout=60.0, max_retries=1)
         manifests = "\n".join(f"\n## {p}\n```\n{c}\n```" for p, c in snapshot.manifests.items())
         user = (
             f"Repository: {snapshot.owner}/{snapshot.name}\n\n"
             "# File tree\n" + "\n".join(snapshot.tree) + "\n\n"
             "# Manifest files (Dockerfile, README, configs)\n" + (manifests or "(none)")
         )
-        resp = client.messages.parse(
+        parsed, _ = call_structured(
             model=os.environ.get("AUTHORING_MODEL", "claude-opus-4-8"),
-            max_tokens=512,
             system=_PORT_SYSTEM,
-            messages=[{"role": "user", "content": user}],
-            output_format=_DetectedRun,
+            user=user,
+            schema=_DetectedRun,
+            max_tokens=512,
+            timeout=60.0,
         )
-        parsed = resp.parsed_output
         if parsed and 1 <= parsed.port <= 65535:
             print(f"[deploy] LLM inferred port {parsed.port}: {parsed.reasoning[:120]}")
             return parsed.port
